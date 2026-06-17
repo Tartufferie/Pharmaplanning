@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
+const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -497,6 +497,57 @@ function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek}){
   );
 }
 
+
+// ─── SEND PLANNING BUTTON ────────────────────────────────────────────────────
+function SendPlanningBtn({emp, week}) {
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+
+  async function send() {
+    if(!emp.email || !week) return;
+    setStatus("sending");
+    const monday = new Date(week.monday);
+
+    const days = DAYS.map((day, di) => {
+      const dd = week.data[day]?.[emp.id] || {};
+      const h = calcHours(dd);
+      const blocks = [];
+      let inB = false, bS = null;
+      SLOTS.forEach((s, i) => {
+        const st = dd[s];
+        if ((st === "work" || st === "pause") && !inB) { inB = true; bS = s; }
+        else if (st !== "work" && st !== "pause" && inB) { blocks.push(`${bS}→${SLOTS[i-1]}`); inB = false; }
+      });
+      if (inB) blocks.push(`${bS}→${SLOTS[SLOTS.length-1]}`);
+      const date = getDayDate(monday, di);
+      return {
+        day,
+        date: formatDate(date),
+        hours: h,
+        blocks: blocks.join("  |  ") || "—",
+      };
+    });
+
+    const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+    const weekLabel = `${formatDate(monday, true)} au ${formatDate(sunday, true)}`;
+
+    try {
+      const res = await fetch("/api/send-planning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: emp.email, name: emp.firstName, weekLabel, days }),
+      });
+      if (res.ok) { setStatus("sent"); setTimeout(() => setStatus("idle"), 3000); }
+      else { setStatus("error"); setTimeout(() => setStatus("idle"), 3000); }
+    } catch(e) {
+      setStatus("error"); setTimeout(() => setStatus("idle"), 3000);
+    }
+  }
+
+  const label = status === "sending" ? "Envoi…" : status === "sent" ? "✓ Envoyé !" : status === "error" ? "⚠ Erreur" : `📧 Envoyer à ${emp.firstName}`;
+  const variant = status === "sent" ? "success" : status === "error" ? "danger" : "ghost";
+  return <Btn size="sm" variant={variant} onClick={send} disabled={status === "sending" || !emp.email}>{label}</Btn>;
+}
+
 // ─── INDIVIDUAL PLANNING ──────────────────────────────────────────────────────
 function IndividualPlanning({weeks,employees}){
   const [selEmpId,setSelEmpId]=useState(employees[0]?.id||"");
@@ -525,7 +576,10 @@ function IndividualPlanning({weeks,employees}){
       <Card style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
         <div style={{width:50,height:50,borderRadius:"50%",background:emp.role==="pharmacien"?C.pharmaDim:C.accentDim,border:`2px solid ${emp.role==="pharmacien"?C.pharma:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:emp.role==="pharmacien"?C.pharma:C.accent,fontWeight:700}}>{emp.firstName[0]}</div>
         <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700,color:C.text}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div><div style={{marginTop:3}}><Badge color={emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge></div></div>
-        <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:700,color:diff>0?C.warning:diff<-1?C.danger:C.accent}}>{weekH}h</div><div style={{color:C.textMuted,fontSize:12}}>/ {emp.contract}h</div>{Math.abs(diff)>0.25&&<Badge color={diff>0?C.warning:C.danger}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}</div>
+        <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+          <div><div style={{fontSize:24,fontWeight:700,color:diff>0?C.warning:diff<-1?C.danger:C.accent}}>{weekH}h</div><div style={{color:C.textMuted,fontSize:12}}>/ {emp.contract}h</div>{Math.abs(diff)>0.25&&<Badge color={diff>0?C.warning:C.danger}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}</div>
+          <SendPlanningBtn emp={emp} week={week}/>
+        </div>
       </Card>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
         {DAYS.map((day,di)=>{
