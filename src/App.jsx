@@ -1,3 +1,4 @@
+// PharmaPlanning v2
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
