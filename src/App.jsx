@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
+const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
