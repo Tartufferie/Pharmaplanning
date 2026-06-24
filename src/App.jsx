@@ -1,4 +1,4 @@
-// PharmaPlanning v2
+// PharmaPlanning v3 - couleurs + vue mensuelle
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
