@@ -655,7 +655,31 @@ function SendPlanningBtn({emp, week}) {
 // ─── RECAP TABLE ─────────────────────────────────────────────────────────────
 function RecapTable({weeks,employees,sector}){
   const [selWeekId,setSelWeekId]=useState(weeks[0]?.id||"");
+  const [view,setView]=useState("week"); // "week" | "month"
   const week=weeks.find(w=>w.id===selWeekId)||weeks[0];
+
+  // Monthly stats: aggregate all weeks for each employee
+  const monthlyStats=useMemo(()=>{
+    return employees.map(emp=>{
+      const totalContract=emp.contract*weeks.length;
+      const totalWorked=weeks.reduce((acc,w)=>acc+calcWeekHours(w.data,emp.id),0);
+      const diff=Math.round((totalWorked-totalContract)*100)/100;
+      const openings=weeks.reduce((acc,w)=>{
+        return acc+DAYS.filter(day=>{
+          if(day==="Dimanche")return false;
+          return w.data[day]?.[emp.id]?.["7h45"]==="work";
+        }).length;
+      },0);
+      const closings=weeks.reduce((acc,w)=>{
+        return acc+DAYS.filter(day=>{
+          if(day==="Dimanche")return false;
+          const cs=CLOSING_SLOT[day];
+          return cs&&cs!=="off"&&w.data[day]?.[emp.id]?.[cs]==="work";
+        }).length;
+      },0);
+      return {...emp,workedH:totalWorked,contract:totalContract,diff,openings,closings,baseContract:emp.contract};
+    });
+  },[weeks,employees]);
 
   if(!week) return <Card><p style={{color:C.textMuted}}>Aucune semaine disponible.</p></Card>;
 
@@ -683,12 +707,7 @@ function RecapTable({weeks,employees,sector}){
     return { ...emp, workedH, contract, diff, openings, closings };
   });
 
-  // Totals row
-  const totals={
-    workedH: Math.round(stats.reduce((a,s)=>a+s.workedH,0)*100)/100,
-    openings: stats.reduce((a,s)=>a+s.openings,0),
-    closings: stats.reduce((a,s)=>a+s.closings,0),
-  };
+  // Totals row — computed dynamically based on view in render
 
   function roleColor(role){
     if(role==="titulaire") return C.titulaire;
@@ -701,8 +720,8 @@ function RecapTable({weeks,employees,sector}){
     return "Pr.";
   }
   function diffColor(d){
-    if(d>0) return C.warning;
-    if(d<0) return C.danger;
+    if(d>0) return C.warning;   // heures supp = orange
+    if(d<0) return C.accent;    // doit des heures = vert
     return C.accent;
   }
   function fmtH(h){
@@ -717,23 +736,36 @@ function RecapTable({weeks,employees,sector}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {/* Week selector */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{color:C.textMuted,fontSize:13}}>Semaine :</span>
-        {weeks.map(w=>{
-          const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
-          return(
-            <button key={w.id} onClick={()=>setSelWeekId(w.id)} style={{
-              padding:"5px 11px",borderRadius:7,border:`1px solid ${selWeekId===w.id?C.accent:C.border}`,
-              cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:500,
-              background:selWeekId===w.id?C.accentDim:"transparent",
-              color:selWeekId===w.id?C.accent:C.textMuted,
-            }}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</button>
-          );
-        })}
+      {/* View toggle + Week selector */}
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:2,background:C.bg,borderRadius:8,padding:3,border:`1px solid ${C.border}`}}>
+          {[["week","Par semaine"],["month","Vue mensuelle"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:view===v?C.accent:"transparent",color:view===v?"#0F1923":C.textMuted,transition:"all 0.15s"}}>{l}</button>
+          ))}
+        </div>
+        {view==="week"&&<>
+          <span style={{color:C.textMuted,fontSize:13}}>Semaine :</span>
+          {weeks.map(w=>{
+            const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+            return(
+              <button key={w.id} onClick={()=>setSelWeekId(w.id)} style={{
+                padding:"5px 11px",borderRadius:7,border:`1px solid ${selWeekId===w.id?C.accent:C.border}`,
+                cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:500,
+                background:selWeekId===w.id?C.accentDim:"transparent",
+                color:selWeekId===w.id?C.accent:C.textMuted,
+              }}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</button>
+            );
+          })}
+        </>}
+        {view==="month"&&<span style={{color:C.textMuted,fontSize:13}}>Total sur {weeks.length} semaine{weeks.length>1?"s":""} chargées</span>}
       </div>
 
       {/* Table */}
+      {view==="month"&&(
+        <div style={{padding:"10px 14px",background:C.accentDim,borderRadius:8,border:`1px solid ${C.accent}33`,marginBottom:8}}>
+          <span style={{color:C.accent,fontSize:12}}>📅 Vue mensuelle — cumul de toutes les semaines chargées dans le calendrier. Contrat = {weeks.length} × heures hebdo.</span>
+        </div>
+      )}
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
           <thead>
@@ -757,7 +789,8 @@ function RecapTable({weeks,employees,sector}){
           </thead>
           <tbody>
             {groups.map(role=>{
-              const groupStats=stats.filter(s=>s.role===role);
+              const activeStats=view==="month"?monthlyStats:stats;
+              const groupStats=activeStats.filter(s=>s.role===role);
               if(groupStats.length===0) return null;
               return(
                 <>
@@ -794,7 +827,7 @@ function RecapTable({weeks,employees,sector}){
                           <span style={{color:C.text,fontWeight:700,fontSize:14}}>{fmtH(s.workedH)}</span>
                           {s.contract>0&&(
                             <div style={{width:60,height:4,background:C.border,borderRadius:99,overflow:"hidden"}}>
-                              <div style={{height:"100%",borderRadius:99,width:`${Math.min((s.workedH/s.contract)*100,100)}%`,background:s.diff>0?C.warning:s.diff<0?C.danger:C.accent}}/>
+                              <div style={{height:"100%",borderRadius:99,width:`${Math.min((s.workedH/s.contract)*100,100)}%`,background:s.diff>0?C.warning:C.accent}}/>
                             </div>
                           )}
                         </div>
@@ -842,18 +875,18 @@ function RecapTable({weeks,employees,sector}){
             <tr style={{borderTop:`2px solid ${C.border}`,background:C.surfaceHover}}>
               <td colSpan={2} style={{padding:"12px",color:C.text,fontWeight:700,fontSize:13}}>Total équipe</td>
               <td style={{padding:"12px",textAlign:"center",color:C.textMuted,fontSize:13}}>
-                {stats.reduce((a,s)=>a+(s.contract||0),0)}h
+                {(view==="month"?monthlyStats:stats).reduce((a,s)=>a+(s.contract||0),0)}h
               </td>
               <td style={{padding:"12px",textAlign:"center",color:C.text,fontWeight:800,fontSize:15}}>
-                {totals.workedH}h
+                {Math.round((view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.workedH,0)*100)/100}h
               </td>
               <td style={{padding:"12px",textAlign:"center",color:C.textMuted}}>—</td>
               <td style={{padding:"12px",textAlign:"center"}}>
-                <span style={{color:C.accent,fontWeight:800,fontSize:15}}>{totals.openings}</span>
+                <span style={{color:C.accent,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.openings,0)}</span>
                 <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>ouv.</span>
               </td>
               <td style={{padding:"12px",textAlign:"center"}}>
-                <span style={{color:C.pharma,fontWeight:800,fontSize:15}}>{totals.closings}</span>
+                <span style={{color:C.pharma,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.closings,0)}</span>
                 <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>fer.</span>
               </td>
             </tr>
@@ -901,7 +934,7 @@ function IndividualPlanning({weeks,employees}){
         <div style={{width:50,height:50,borderRadius:"50%",background:emp.role==="pharmacien"?C.pharmaDim:C.accentDim,border:`2px solid ${emp.role==="pharmacien"?C.pharma:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:emp.role==="pharmacien"?C.pharma:C.accent,fontWeight:700}}>{emp.firstName[0]}</div>
         <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700,color:C.text}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div><div style={{marginTop:3}}><Badge color={emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="titulaire"?"Titulaire (WP)":emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge></div></div>
         <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-          <div><div style={{fontSize:24,fontWeight:700,color:diff>0?C.warning:diff<-1?C.danger:C.accent}}>{weekH}h</div><div style={{color:C.textMuted,fontSize:12}}>/ {emp.contract}h</div>{Math.abs(diff)>0.25&&<Badge color={diff>0?C.warning:C.danger}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}</div>
+          <div><div style={{fontSize:24,fontWeight:700,color:diff>0?C.warning:C.accent}}>{weekH}h</div><div style={{color:C.textMuted,fontSize:12}}>/ {emp.contract}h</div>{Math.abs(diff)>0.25&&<Badge color={diff>0?C.warning:C.accent}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}</div>
           <SendPlanningBtn emp={emp} week={week}/>
         </div>
       </Card>
