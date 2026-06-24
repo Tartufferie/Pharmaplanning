@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
+const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -126,6 +126,7 @@ const C = {
   warning:"#F59E0B",warningDim:"#F59E0B22",
   purple:"#A855F7",purpleDim:"#A855F722",
   locked:"#3A5570",lockedDim:"#3A557022",
+  titulaire:"#F97316",titulaireDim:"#F9731622",
 };
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -156,6 +157,8 @@ function getDayDate(monday,dayIndex){const d=new Date(monday);d.setDate(d.getDat
 
 // ─── INITIAL DATA ─────────────────────────────────────────────────────────────
 const INIT_PHARMA_EMPS = [
+  {id:"wp1",       firstName:"Titulaire", lastName:"1",     role:"titulaire",   contract:35,email:"titulaire1@pharmacie.fr", sector:"pharmacie"},
+  {id:"wp2",       firstName:"Titulaire", lastName:"2",     role:"titulaire",   contract:35,email:"titulaire2@pharmacie.fr", sector:"pharmacie"},
   {id:"johana",    firstName:"Johana",    lastName:"",      role:"pharmacien",  contract:35,email:"johana@pharmacie.fr",    sector:"pharmacie"},
   {id:"seyfullah", firstName:"Seyfullah", lastName:"",      role:"pharmacien",  contract:35,email:"seyfullah@pharmacie.fr", sector:"pharmacie"},
   {id:"navin",     firstName:"Navin",     lastName:"",      role:"pharmacien",  contract:30,email:"navin@pharmacie.fr",     sector:"pharmacie"},
@@ -247,7 +250,7 @@ function checkRules(weekData,employees,day){
   const alerts=[];
   if(day==="Dimanche")return alerts;
   const dayData=weekData[day]||{};
-  const pharmaEmps=employees.filter(e=>e.role==="pharmacien");
+  const pharmaEmps=employees.filter(e=>e.role==="pharmacien"||e.role==="titulaire");
   function staffAt(slot){return employees.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
   function pharmaAt(slot){return pharmaEmps.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
   const oS=staffAt(OPENING_SLOT),oP=pharmaAt(OPENING_SLOT);
@@ -264,7 +267,7 @@ function checkRules(weekData,employees,day){
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-function calcHours(dd){return Object.values(dd||{}).filter(s=>s==="work"||s==="pause").length*0.5;}
+function calcHours(dd){return Object.values(dd||{}).filter(s=>s==="work").length*0.5;}
 function calcWeekHours(weekData,empId){return DAYS.reduce((a,d)=>a+calcHours(weekData[d]?.[empId]||{}),0);}
 function getStatusBg(s){return s==="work"?"#00C89622":s==="pause"?"#F59E0B22":s==="repos"?"#1a203044":"transparent";}
 function getStatusBorder(s){return s==="work"?C.accent:s==="pause"?C.pause:s==="repos"?C.textDim:C.border;}
@@ -358,7 +361,7 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
   const alerts=sector==="pharmacie"?checkRules(weekData,employees,selectedDay):[];
   const alertSlots=new Set(alerts.map(a=>a.slot));
   const coverage=useMemo(()=>Object.fromEntries(SLOTS.map(slot=>{
-    const staff=employees.filter(e=>{const s=weekData[selectedDay]?.[e.id]?.[slot];return s==="work"||s==="pause";});
+    const staff=employees.filter(e=>{const s=weekData[selectedDay]?.[e.id]?.[slot];return s==="work";});
     return[slot,{total:staff.length,pharma:staff.filter(e=>e.role==="pharmacien").length}];
   })),[weekData,selectedDay,employees]);
   const dayTabs=DAYS.map((day,i)=>({day,date:getDayDate(mondayDate,i),label:`${DAYS_SHORT[i]} ${getDayDate(mondayDate,i).getDate()}`}));
@@ -407,16 +410,16 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
             </div>
             <div style={{display:"flex",marginBottom:7,paddingLeft:120}}>{SLOTS.map(slot=><div key={slot} style={{flex:1,height:1,background:PAUSE_SLOTS.includes(slot)?`${C.pause}55`:C.border}}/>)}</div>
             {/* Rows */}
-            {(sector==="pharmacie"?["pharmacien","preparateur"]:["preparateur"]).map(role=>(
+            {(sector==="pharmacie"?["titulaire","pharmacien","preparateur"]:["preparateur"]).map(role=>(
               <div key={role}>
-                <div style={{padding:"4px 0 3px",color:C.textDim,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>{role==="pharmacien"?"◆ Pharmaciens":"◆ "+(sector==="parapharmacie"?"Parapharmacie":"Préparateurs")}</div>
+                <div style={{padding:"4px 0 3px",color:C.textDim,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>{role==="titulaire"?"◆ Titulaires (WP)":role==="pharmacien"?"◆ Pharmaciens":"◆ "+(sector==="parapharmacie"?"Parapharmacie":"Préparateurs")}</div>
                 {filtered.filter(e=>e.role===role).map(emp=>{
                   const dd=weekData[selectedDay]?.[emp.id]||{};
                   const h=calcHours(dd);
                   return(
                     <div key={emp.id} style={{display:"flex",alignItems:"center",marginBottom:3}}>
                       <div style={{width:120,flexShrink:0,display:"flex",alignItems:"center",gap:5,paddingRight:6}}>
-                        <div style={{width:5,height:5,borderRadius:"50%",flexShrink:0,background:emp.role==="pharmacien"?C.pharma:C.accent}}/>
+                        <div style={{width:5,height:5,borderRadius:"50%",flexShrink:0,background:emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}}/>
                         <span style={{color:C.text,fontSize:11,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:88}} title={`${emp.firstName} ${emp.lastName}`}>{emp.firstName}</span>
                         <span style={{color:C.textDim,fontSize:10,flexShrink:0}}>{h}h</span>
                       </div>
@@ -444,55 +447,154 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
 }
 
 // ─── CALENDAR VIEW ────────────────────────────────────────────────────────────
-function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek}){
+function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek,onCreateWeek}){
   const today=new Date();today.setHours(0,0,0,0);
-  const byMonth=useMemo(()=>{
-    const groups={};
-    weeks.forEach(w=>{const m=new Date(w.monday);const key=`${m.getFullYear()}-${m.getMonth()}`;if(!groups[key])groups[key]={year:m.getFullYear(),month:m.getMonth(),weeks:[]};groups[key].weeks.push(w);});
-    return Object.values(groups);
-  },[weeks]);
+  const [viewYear,setViewYear]=useState(today.getFullYear());
+  const [viewMonth,setViewMonth]=useState(today.getMonth());
+
+  // Build grid: 6 rows x 7 cols for the month
+  const firstDay=new Date(viewYear,viewMonth,1);
+  const lastDay=new Date(viewYear,viewMonth+1,0);
+  // Start grid from Monday of the first week
+  const gridStart=new Date(firstDay);
+  const dow=gridStart.getDay();
+  gridStart.setDate(gridStart.getDate()-(dow===0?6:dow-1));
+
+  const cells=[];
+  for(let i=0;i<42;i++){
+    const d=new Date(gridStart);d.setDate(gridStart.getDate()+i);
+    cells.push(d);
+  }
+
+  // Group cells into weeks (rows of 7)
+  const rows=[];
+  for(let i=0;i<42;i+=7) rows.push(cells.slice(i,i+7));
+  // Remove last row if all days are outside current month
+  while(rows.length>4 && rows[rows.length-1].every(d=>d.getMonth()!==viewMonth)) rows.pop();
+
+  function getMondayKey(d){
+    const m=new Date(d);const dw=m.getDay();m.setDate(m.getDate()-(dw===0?6:dw-1));m.setHours(0,0,0,0);
+    return m.toISOString().slice(0,10);
+  }
+
+  const weekMap=Object.fromEntries(weeks.map(w=>[w.id,w]));
+
+  function prevMonth(){
+    if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}
+    else setViewMonth(m=>m-1);
+  }
+  function nextMonth(){
+    if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}
+    else setViewMonth(m=>m+1);
+  }
+
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:24}}>
-      {byMonth.map(group=>(
-        <div key={`${group.year}-${group.month}`}>
-          <h3 style={{color:C.text,fontWeight:700,fontSize:16,margin:"0 0 12px"}}>{MONTHS[group.month]} {group.year}</h3>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {group.weeks.map(week=>{
-              const monday=new Date(week.monday),sunday=new Date(monday);sunday.setDate(sunday.getDate()+6);
-              const isCurrent=today>=monday&&today<=sunday,isPast=sunday<today;
-              const alertCount=sector==="pharmacie"?DAYS.flatMap(d=>checkRules(week.data,employees,d)).filter(a=>a.type==="danger").length:0;
-              return(
-                <div key={week.id} onClick={()=>onSelectWeek(week.id)} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",borderRadius:10,cursor:"pointer",transition:"all 0.15s",border:`2px solid ${week.locked?C.locked:isCurrent?`${C.accent}66`:C.border}`,background:week.locked?C.lockedDim:isCurrent?C.accentDim:C.surface}}>
-                  <div style={{minWidth:170}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                      {isCurrent&&<Badge color={C.accent}>En cours</Badge>}
-                      {isPast&&!isCurrent&&<Badge color={C.textDim}>Passée</Badge>}
-                      {week.locked&&<Badge color={C.locked}>🔒 Verrouillé</Badge>}
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {/* Month navigator */}
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <button onClick={prevMonth} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:18,lineHeight:1}}>‹</button>
+        <h2 style={{color:C.text,fontWeight:800,fontSize:20,margin:0,flex:1,textAlign:"center"}}>
+          {MONTHS[viewMonth]} {viewYear}
+        </h2>
+        <button onClick={nextMonth} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:18,lineHeight:1}}>›</button>
+        <Btn size="sm" variant="ghost" onClick={()=>{setViewMonth(today.getMonth());setViewYear(today.getFullYear());}}>Aujourd'hui</Btn>
+      </div>
+
+      {/* Day headers */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+        {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(d=>(
+          <div key={d} style={{textAlign:"center",color:C.textDim,fontSize:11,fontWeight:700,letterSpacing:"0.08em",padding:"4px 0"}}>{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar rows — one row = one week */}
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {rows.map((row,ri)=>{
+          const mondayKey=getMondayKey(row[0]);
+          const week=weekMap[mondayKey];
+          const monday=row[0];
+          const sunday=row[6];
+          const isCurrent=today>=monday&&today<=sunday;
+          const isPast=sunday<today;
+          const hasWeek=!!week;
+          const alertCount=hasWeek&&sector==="pharmacie"?DAYS.flatMap(d=>checkRules(week.data,employees,d)).filter(a=>a.type==="danger").length:0;
+
+          return(
+            <div key={ri} style={{
+              display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,
+              border:`2px solid ${week?.locked?C.locked:isCurrent?`${C.accent}55`:hasWeek?C.border:"transparent"}`,
+              borderRadius:10,padding:4,
+              background:isCurrent?`${C.accent}08`:week?.locked?C.lockedDim:"transparent",
+              cursor:hasWeek?"pointer":"default",
+              transition:"all 0.15s",
+            }}
+            onClick={()=>hasWeek&&onSelectWeek(mondayKey)}
+            >
+              {row.map((day,di)=>{
+                const isThisMonth=day.getMonth()===viewMonth;
+                const isToday=day.toDateString()===today.toDateString();
+                const isWeekend=di>=5;
+                return(
+                  <div key={di} style={{
+                    padding:"8px 6px",borderRadius:7,minHeight:56,
+                    background:isToday?C.accentDim:isWeekend&&isThisMonth?"#0a1520":"transparent",
+                    position:"relative",
+                  }}>
+                    <div style={{
+                      width:24,height:24,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4,
+                      background:isToday?C.accent:"transparent",
+                    }}>
+                      <span style={{
+                        fontSize:13,fontWeight:isToday?800:500,
+                        color:isToday?"#0F1923":isThisMonth?C.text:C.textDim,
+                      }}>{day.getDate()}</span>
                     </div>
-                    <div style={{color:C.text,fontWeight:700,fontSize:14}}>{formatDate(monday)} → {formatDate(sunday)}</div>
-                  </div>
-                  <div style={{flex:1,display:"flex",gap:3}}>
-                    {DAYS.map((day,di)=>{
-                      const staffCount=employees.filter(e=>SLOTS.some(s=>{const st=week.data[day]?.[e.id]?.[s];return st==="work"||st==="pause";})).length;
-                      const hasAlerts=sector==="pharmacie"&&checkRules(week.data,employees,day).some(a=>a.type==="danger");
-                      return <div key={day} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                        <div style={{width:"100%",height:26,borderRadius:4,background:hasAlerts?C.dangerDim:staffCount>0?C.accentDim:C.border,border:`1px solid ${hasAlerts?C.danger:staffCount>0?C.accent:C.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <span style={{fontSize:10,fontWeight:700,color:hasAlerts?C.danger:staffCount>0?C.accent:C.textDim}}>{day==="Dimanche"?"—":staffCount}</span>
+                    {/* Show staff count for this day if week exists */}
+                    {hasWeek&&isThisMonth&&di<6&&(()=>{
+                      const dayName=DAYS[di];
+                      const staffCount=employees.filter(e=>SLOTS.some(s=>{const st=week.data[dayName]?.[e.id]?.[s];return st==="work";})).length;
+                      const hasAlert=sector==="pharmacie"&&checkRules(week.data,employees,dayName).some(a=>a.type==="danger");
+                      return staffCount>0?(
+                        <div style={{display:"flex",alignItems:"center",gap:3}}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:hasAlert?C.danger:C.accent,flexShrink:0}}/>
+                          <span style={{fontSize:10,color:hasAlert?C.danger:C.accent,fontWeight:600}}>{staffCount} pers.</span>
                         </div>
-                        <span style={{fontSize:9,color:C.textDim}}>{DAYS_SHORT[di]}</span>
-                      </div>;
-                    })}
+                      ):null;
+                    })()}
+                    {/* Locked indicator */}
+                    {week?.locked&&di===0&&<div style={{position:"absolute",top:4,right:4,fontSize:10}}>🔒</div>}
                   </div>
-                  {alertCount>0&&<Badge color={C.danger}>{alertCount} alerte{alertCount>1?"s":""}</Badge>}
-                  <div onClick={e=>e.stopPropagation()}>
-                    {!week.locked?<Btn size="sm" variant="success" onClick={()=>onLockWeek(week.id)}>✓ Valider</Btn>:<span style={{color:C.textDim,fontSize:14}}>🔒</span>}
-                  </div>
+                );
+              })}
+
+              {/* Week action bar — shown on right side */}
+              <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 6px 2px",borderTop:`1px solid ${C.border}33`,marginTop:2}}>
+                <span style={{color:C.textDim,fontSize:11}}>
+                  {formatDate(monday,true)} → {formatDate(sunday,true)}
+                  {isCurrent&&<span style={{color:C.accent,marginLeft:6,fontWeight:700}}>● cette semaine</span>}
+                </span>
+                <div style={{display:"flex",gap:6,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                  {alertCount>0&&<Badge color={C.danger}>{alertCount}</Badge>}
+                  {!hasWeek?(
+                    <Btn size="sm" variant="primary" onClick={()=>onCreateWeek(mondayKey)}>+ Créer ce planning</Btn>
+                  ):week.locked?(
+                    <span style={{color:C.locked,fontSize:11}}>🔒 Verrouillé</span>
+                  ):(
+                    <Btn size="sm" variant="success" onClick={()=>onLockWeek(mondayKey)}>✓ Valider</Btn>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Planning créé</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.danger}}/><span style={{color:C.textMuted,fontSize:12}}>Alerte règle</span></div>
+        <span style={{color:C.textDim,fontSize:12,marginLeft:"auto"}}>Cliquez sur une semaine pour l'éditer · "Créer" pour démarrer un nouveau planning</span>
+      </div>
     </div>
   );
 }
@@ -548,6 +650,227 @@ function SendPlanningBtn({emp, week}) {
   return <Btn size="sm" variant={variant} onClick={send} disabled={status === "sending" || !emp.email}>{label}</Btn>;
 }
 
+
+// ─── RECAP TABLE ─────────────────────────────────────────────────────────────
+function RecapTable({weeks,employees,sector}){
+  const [selWeekId,setSelWeekId]=useState(weeks[0]?.id||"");
+  const week=weeks.find(w=>w.id===selWeekId)||weeks[0];
+
+  if(!week) return <Card><p style={{color:C.textMuted}}>Aucune semaine disponible.</p></Card>;
+
+  const monday=new Date(week.monday);
+
+  // For each employee, compute stats across all days of the week
+  const stats=employees.map(emp=>{
+    let workedH=0, openings=0, closings=0;
+
+    DAYS.forEach((day,di)=>{
+      if(day==="Dimanche") return;
+      const dd=week.data[day]?.[emp.id]||{};
+      // Hours: only "work" slots
+      workedH+=Object.values(dd).filter(s=>s==="work").length*0.5;
+      // Opening: present at 7h45
+      if(dd["7h45"]==="work") openings++;
+      // Closing: present at last slot of the day
+      const closeSlot=CLOSING_SLOT[day];
+      if(closeSlot&&closeSlot!=="off"&&dd[closeSlot]==="work") closings++;
+    });
+
+    const contract=emp.contract||0;
+    const diff=Math.round((workedH-contract)*100)/100;
+
+    return { ...emp, workedH, contract, diff, openings, closings };
+  });
+
+  // Totals row
+  const totals={
+    workedH: Math.round(stats.reduce((a,s)=>a+s.workedH,0)*100)/100,
+    openings: stats.reduce((a,s)=>a+s.openings,0),
+    closings: stats.reduce((a,s)=>a+s.closings,0),
+  };
+
+  function roleColor(role){
+    if(role==="titulaire") return C.titulaire;
+    if(role==="pharmacien") return C.pharma;
+    return C.accent;
+  }
+  function roleLabel(role){
+    if(role==="titulaire") return "WP";
+    if(role==="pharmacien") return "Ph.";
+    return "Pr.";
+  }
+  function diffColor(d){
+    if(d>0) return C.warning;
+    if(d<0) return C.danger;
+    return C.accent;
+  }
+  function fmtH(h){
+    return h%1===0?`${h}h`:`${h}h`;
+  }
+  function fmtDiff(d){
+    if(d===0) return "=";
+    return (d>0?"+":"")+d+"h";
+  }
+
+  const groups=["titulaire","pharmacien","preparateur"];
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Week selector */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{color:C.textMuted,fontSize:13}}>Semaine :</span>
+        {weeks.map(w=>{
+          const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+          return(
+            <button key={w.id} onClick={()=>setSelWeekId(w.id)} style={{
+              padding:"5px 11px",borderRadius:7,border:`1px solid ${selWeekId===w.id?C.accent:C.border}`,
+              cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:500,
+              background:selWeekId===w.id?C.accentDim:"transparent",
+              color:selWeekId===w.id?C.accent:C.textMuted,
+            }}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${C.border}`}}>
+              {[
+                {label:"Salarié",      w:160, align:"left"},
+                {label:"Rôle",         w:60,  align:"center"},
+                {label:"Contrat",      w:70,  align:"center"},
+                {label:"Heures faites",w:90,  align:"center"},
+                {label:"Écart",        w:70,  align:"center"},
+                {label:"Ouvertures",   w:90,  align:"center"},
+                {label:"Fermetures",   w:90,  align:"center"},
+              ].map(col=>(
+                <th key={col.label} style={{
+                  padding:"10px 12px",textAlign:col.align,color:C.textMuted,
+                  fontSize:11,fontWeight:700,letterSpacing:"0.08em",
+                  textTransform:"uppercase",width:col.w,
+                }}>{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map(role=>{
+              const groupStats=stats.filter(s=>s.role===role);
+              if(groupStats.length===0) return null;
+              return(
+                <>
+                  {/* Group header */}
+                  <tr key={`header-${role}`}>
+                    <td colSpan={7} style={{padding:"8px 12px 4px",color:roleColor(role),fontSize:10,fontWeight:800,letterSpacing:"0.12em",textTransform:"uppercase",borderTop:`1px solid ${C.border}`}}>
+                      {role==="titulaire"?"◆ Titulaires (WP)":role==="pharmacien"?"◆ Pharmaciens":"◆ Préparateurs / Caissières"}
+                    </td>
+                  </tr>
+                  {groupStats.map(s=>(
+                    <tr key={s.id} style={{borderBottom:`1px solid ${C.border}22`}}
+                      onMouseEnter={e=>e.currentTarget.style.background=C.surfaceHover}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      {/* Name */}
+                      <td style={{padding:"10px 12px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{width:28,height:28,borderRadius:"50%",background:`${roleColor(s.role)}22`,border:`2px solid ${roleColor(s.role)}`,display:"flex",alignItems:"center",justifyContent:"center",color:roleColor(s.role),fontWeight:700,fontSize:12,flexShrink:0}}>
+                            {s.firstName[0]}
+                          </div>
+                          <span style={{color:C.text,fontWeight:600,fontSize:13}}>{s.firstName} {s.lastName}</span>
+                        </div>
+                      </td>
+                      {/* Role badge */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        <Badge color={roleColor(s.role)}>{roleLabel(s.role)}</Badge>
+                      </td>
+                      {/* Contract */}
+                      <td style={{padding:"10px 12px",textAlign:"center",color:C.textMuted,fontSize:13}}>
+                        {s.contract}h
+                      </td>
+                      {/* Worked hours + bar */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                          <span style={{color:C.text,fontWeight:700,fontSize:14}}>{fmtH(s.workedH)}</span>
+                          {s.contract>0&&(
+                            <div style={{width:60,height:4,background:C.border,borderRadius:99,overflow:"hidden"}}>
+                              <div style={{height:"100%",borderRadius:99,width:`${Math.min((s.workedH/s.contract)*100,100)}%`,background:s.diff>0?C.warning:s.diff<0?C.danger:C.accent}}/>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      {/* Diff */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        <span style={{
+                          color:diffColor(s.diff),fontWeight:700,fontSize:13,
+                          padding:"2px 8px",borderRadius:99,background:`${diffColor(s.diff)}18`,
+                        }}>{fmtDiff(s.diff)}</span>
+                      </td>
+                      {/* Openings */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                          <span style={{color:s.openings>0?C.accent:C.textDim,fontWeight:700,fontSize:16}}>{s.openings}</span>
+                          {s.openings>0&&(
+                            <div style={{display:"flex",gap:2}}>
+                              {Array.from({length:s.openings}).map((_,i)=>(
+                                <div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent}}/>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      {/* Closings */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                          <span style={{color:s.closings>0?C.pharma:C.textDim,fontWeight:700,fontSize:16}}>{s.closings}</span>
+                          {s.closings>0&&(
+                            <div style={{display:"flex",gap:2}}>
+                              {Array.from({length:s.closings}).map((_,i)=>(
+                                <div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.pharma}}/>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              );
+            })}
+
+            {/* Totals row */}
+            <tr style={{borderTop:`2px solid ${C.border}`,background:C.surfaceHover}}>
+              <td colSpan={2} style={{padding:"12px",color:C.text,fontWeight:700,fontSize:13}}>Total équipe</td>
+              <td style={{padding:"12px",textAlign:"center",color:C.textMuted,fontSize:13}}>
+                {stats.reduce((a,s)=>a+(s.contract||0),0)}h
+              </td>
+              <td style={{padding:"12px",textAlign:"center",color:C.text,fontWeight:800,fontSize:15}}>
+                {totals.workedH}h
+              </td>
+              <td style={{padding:"12px",textAlign:"center",color:C.textMuted}}>—</td>
+              <td style={{padding:"12px",textAlign:"center"}}>
+                <span style={{color:C.accent,fontWeight:800,fontSize:15}}>{totals.openings}</span>
+                <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>ouv.</span>
+              </td>
+              <td style={{padding:"12px",textAlign:"center"}}>
+                <span style={{color:C.pharma,fontWeight:800,fontSize:15}}>{totals.closings}</span>
+                <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>fer.</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Legend */}
+      <div style={{display:"flex",gap:20,flexWrap:"wrap",padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Ouverture = présent à 7h45</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 19h sam)</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.warning,fontWeight:700,fontSize:12}}>+xh</span><span style={{color:C.textMuted,fontSize:12}}>= heures supp</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.danger,fontWeight:700,fontSize:12}}>-xh</span><span style={{color:C.textMuted,fontSize:12}}>= déficit</span></div>
+      </div>
+    </div>
+  );
+}
+
 // ─── INDIVIDUAL PLANNING ──────────────────────────────────────────────────────
 function IndividualPlanning({weeks,employees}){
   const [selEmpId,setSelEmpId]=useState(employees[0]?.id||"");
@@ -575,7 +898,7 @@ function IndividualPlanning({weeks,employees}){
       </div>
       <Card style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
         <div style={{width:50,height:50,borderRadius:"50%",background:emp.role==="pharmacien"?C.pharmaDim:C.accentDim,border:`2px solid ${emp.role==="pharmacien"?C.pharma:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:emp.role==="pharmacien"?C.pharma:C.accent,fontWeight:700}}>{emp.firstName[0]}</div>
-        <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700,color:C.text}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div><div style={{marginTop:3}}><Badge color={emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge></div></div>
+        <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700,color:C.text}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div><div style={{marginTop:3}}><Badge color={emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="titulaire"?"Titulaire (WP)":emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge></div></div>
         <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
           <div><div style={{fontSize:24,fontWeight:700,color:diff>0?C.warning:diff<-1?C.danger:C.accent}}>{weekH}h</div><div style={{color:C.textMuted,fontSize:12}}>/ {emp.contract}h</div>{Math.abs(diff)>0.25&&<Badge color={diff>0?C.warning:C.danger}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}</div>
           <SendPlanningBtn emp={emp} week={week}/>
@@ -805,7 +1128,7 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
             <Inp label="Prénom *" value={form.firstName} onChange={v=>setForm(f=>({...f,firstName:v}))} placeholder="Marie"/>
             <Inp label="Nom" value={form.lastName} onChange={v=>setForm(f=>({...f,lastName:v}))} placeholder="Dupont"/>
             <div style={{gridColumn:"1/-1"}}><Inp label="Email *" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="marie@pharmacie.fr" type="email"/></div>
-            {sector==="pharmacie"&&<Sel label="Rôle" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))}><option value="pharmacien">Pharmacien(ne)</option><option value="preparateur">Préparateur / Caissière</option></Sel>}
+            {sector==="pharmacie"&&<Sel label="Rôle" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))}><option value="titulaire">Titulaire (WP)</option><option value="pharmacien">Pharmacien(ne)</option><option value="preparateur">Préparateur / Caissière</option></Sel>}
             <Inp label="H/semaine" value={form.contract} onChange={v=>setForm(f=>({...f,contract:v}))} placeholder="35" type="number"/>
           </div>
           <div style={{display:"flex",gap:8,marginTop:12}}><Btn onClick={save} disabled={!form.firstName.trim()||!form.email.trim()||saving}>{saving?"Enregistrement…":"Enregistrer"}</Btn><Btn variant="ghost" onClick={()=>setShowForm(false)}>Annuler</Btn></div>
@@ -823,7 +1146,7 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <div style={{width:34,height:34,borderRadius:"50%",background:emp.role==="pharmacien"?C.pharmaDim:C.accentDim,border:`2px solid ${emp.role==="pharmacien"?C.pharma:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",color:emp.role==="pharmacien"?C.pharma:C.accent,fontWeight:700,fontSize:14,flexShrink:0}}>{emp.firstName[0]}</div>
               <div style={{flex:1}}><div style={{color:C.text,fontWeight:600,fontSize:14}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div></div>
-              <Badge color={emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge>
+              <Badge color={emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="titulaire"?"Titulaire (WP)":emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge>
               <Badge color={C.textMuted}>{emp.contract}h/sem</Badge>
               <div style={{display:"flex",gap:7}}><Btn size="sm" variant="ghost" onClick={()=>{setEditId(emp.id);setForm({firstName:emp.firstName,lastName:emp.lastName,email:emp.email,role:emp.role,contract:emp.contract});setShowForm(true);}}>Modifier</Btn><Btn size="sm" variant="danger" onClick={()=>setConfirmDel(emp)}>Supprimer</Btn></div>
             </div>
@@ -969,6 +1292,17 @@ export default function App() {
     try{await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);}
   }
 
+  async function createWeekFromDate(mondayKey){
+    // Check not already exists
+    if(weeks.find(w=>w.id===mondayKey)) return;
+    const monday=new Date(mondayKey+"T00:00:00Z");
+    const newWeek=createWeekSchedule(monday,buildBaseTemplate(employees,sector),sector);
+    setWeeks(prev=>[...prev,newWeek].sort((a,b)=>new Date(a.monday)-new Date(b.monday)));
+    setSelectedWeekId(mondayKey);
+    try{await db.upsertWeek(newWeek);}catch(e){console.error(e);}
+    setActiveTab("trames");
+  }
+
   if(setup) return <SetupScreen onDone={()=>setSetup(false)}/>;
 
   if(loading) return(
@@ -984,6 +1318,7 @@ export default function App() {
   const tabs=[
     {id:"calendar",  label:"Calendrier",      icon:"📅"},
     {id:"trames",    label:"Grille horaire",   icon:"▦"},
+    {id:"recap",     label:"Récapitulatif",    icon:"📊"},
     {id:"individual",label:"Planning",         icon:"◉"},
     {id:"exchanges", label:pendingCount>0?`Échanges (${pendingCount})`:"Échanges",icon:"⇄"},
     {id:"employees", label:"Équipe",           icon:"◎"},
@@ -1041,8 +1376,7 @@ export default function App() {
         {activeTab==="calendar"&&(
           <div>
             <div style={{marginBottom:14}}><h2 style={{color:C.text,margin:"0 0 3px",fontSize:18,fontWeight:700}}>Calendrier des plannings</h2><p style={{color:C.textMuted,fontSize:13,margin:0}}>Cliquez sur une semaine pour l'éditer. Validez pour verrouiller.</p></div>
-            <CalendarView weeks={weeks} sector={sector} employees={employees} onSelectWeek={id=>{setSelectedWeekId(id);setActiveTab("trames");}} onLockWeek={lockWeek}/>
-            <div style={{marginTop:14}}><Btn variant="ghost" onClick={addMoreWeeks}>+ Charger 4 semaines supplémentaires</Btn></div>
+            <CalendarView weeks={weeks} sector={sector} employees={employees} onSelectWeek={id=>{setSelectedWeekId(id);setActiveTab("trames");}} onLockWeek={lockWeek} onCreateWeek={createWeekFromDate}/>
           </div>
         )}
         {activeTab==="trames"&&selectedWeek&&(
@@ -1059,10 +1393,19 @@ export default function App() {
             {!selectedWeek.locked&&<div style={{marginTop:12,display:"flex",justifyContent:"flex-end"}}><Btn variant="success" onClick={()=>lockWeek(selectedWeek.id)}>✓ Valider et verrouiller</Btn></div>}
           </div>
         )}
+        {activeTab==="recap"&&(
+          <div>
+            <div style={{marginBottom:14}}>
+              <h2 style={{color:C.text,margin:"0 0 3px",fontSize:18,fontWeight:700}}>Récapitulatif hebdomadaire</h2>
+              <p style={{color:C.textMuted,fontSize:13,margin:0}}>Heures, écarts, ouvertures et fermetures par salarié.</p>
+            </div>
+            <Card><RecapTable weeks={weeks} employees={employees} sector={sector}/></Card>
+          </div>
+        )}
         {activeTab==="individual"&&<IndividualPlanning weeks={weeks} employees={employees}/>}
         {activeTab==="exchanges"&&<Exchanges exchanges={exchanges.filter(e=>(weeks.find(w=>w.id===e.weekId)||e.sector===sector))} setExchanges={setExchanges} weeks={weeks} setWeeks={setWeeks} employees={employees}/>}
         {activeTab==="employees"&&<EmployeeManager employees={employees} setEmployees={setEmp} weeks={weeks} setWeeks={setWeeks} sector={sector}/>}
       </div>
     </div>
   );
-}
+}&
