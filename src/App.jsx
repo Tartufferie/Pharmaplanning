@@ -1,4 +1,4 @@
-// PharmaPlanning v3 - couleurs + vue mensuelle
+// PharmaPlanning v4 - dropdowns + couleurs + vue mensuelle
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
@@ -745,17 +745,17 @@ function RecapTable({weeks,employees,sector}){
         </div>
         {view==="week"&&<>
           <span style={{color:C.textMuted,fontSize:13}}>Semaine :</span>
-          {weeks.map(w=>{
-            const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
-            return(
-              <button key={w.id} onClick={()=>setSelWeekId(w.id)} style={{
-                padding:"5px 11px",borderRadius:7,border:`1px solid ${selWeekId===w.id?C.accent:C.border}`,
-                cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:500,
-                background:selWeekId===w.id?C.accentDim:"transparent",
-                color:selWeekId===w.id?C.accent:C.textMuted,
-              }}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</button>
-            );
-          })}
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <select value={selWeekId} onChange={e=>setSelWeekId(e.target.value)}
+              style={{padding:"6px 10px",borderRadius:8,background:C.bg,border:`1px solid ${C.accent}`,color:C.text,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",minWidth:220}}>
+              {weeks.map(w=>{
+                const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+                return<option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;
+              })}
+            </select>
+            <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selWeekId);if(idx>0)setSelWeekId(weeks[idx-1].id);}} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>‹</button>
+            <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selWeekId);if(idx<weeks.length-1)setSelWeekId(weeks[idx+1].id);}} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>›</button>
+          </div>
         </>}
         {view==="month"&&<span style={{color:C.textMuted,fontSize:13}}>Total sur {weeks.length} semaine{weeks.length>1?"s":""} chargées</span>}
       </div>
@@ -926,7 +926,11 @@ function IndividualPlanning({weeks,employees}){
         <div style={{flex:1,minWidth:200}}>
           <label style={{color:C.textMuted,fontSize:12,display:"block",marginBottom:6}}>Semaine</label>
           <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            {weeks.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);return <button key={w.id} onClick={()=>setSelWeekId(w.id)} style={{padding:"5px 11px",borderRadius:7,border:`1px solid ${selWeekId===w.id?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:500,background:selWeekId===w.id?C.accentDim:"transparent",color:selWeekId===w.id?C.accent:C.textMuted}}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</button>;})}
+            <select value={selWeekId} onChange={e=>setSelWeekId(e.target.value)} style={{padding:"6px 10px",borderRadius:8,background:C.bg,border:`1px solid ${C.accent}`,color:C.text,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",minWidth:220}}>
+              {weeks.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);return<option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;})}
+            </select>
+            <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selWeekId);if(idx>0)setSelWeekId(weeks[idx-1].id);}} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>‹</button>
+            <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selWeekId);if(idx<weeks.length-1)setSelWeekId(weeks[idx+1].id);}} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>›</button>
           </div>
         </div>
       </div>
@@ -1028,7 +1032,7 @@ function Exchanges({exchanges,setExchanges,weeks,setWeeks,employees}){
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
               <Sel label="Semaine" value={form.weekId} onChange={v=>setForm(f=>({...f,weekId:v,to:""}))}>
                 <option value="">Choisir...</option>
-                {weeks.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);return <option key={w.id} value={w.id}>{formatDate(m,true)}–{formatDate(s,true)}{w.locked?" 🔒":""}</option>;})}
+                {weeks.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);return <option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;})}
               </Sel>
               <Sel label="Jour" value={form.day} onChange={v=>setForm(f=>({...f,day:v,to:""}))}>
                 {DAYS.filter(d=>d!=="Dimanche").map(d=><option key={d}>{d}</option>)}
@@ -1417,8 +1421,17 @@ export default function App() {
           <div>
             <div style={{marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <div><h2 style={{color:C.text,margin:"0 0 3px",fontSize:18,fontWeight:700}}>Grille — {formatDate(new Date(selectedWeek.monday))} au {formatDate(new Date(new Date(selectedWeek.monday).setDate(new Date(selectedWeek.monday).getDate()+6)))}</h2></div>
-              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                {weeks.map(w=>{const m=new Date(w.monday);return <button key={w.id} onClick={()=>setSelectedWeekId(w.id)} style={{padding:"4px 9px",borderRadius:6,border:`1px solid ${w.id===selectedWeekId?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,background:w.id===selectedWeekId?C.accentDim:"transparent",color:w.id===selectedWeekId?C.accent:C.textMuted}}>{formatDate(m,true)}{w.locked?" 🔒":""}</button>;})}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <select value={selectedWeekId} onChange={e=>setSelectedWeekId(e.target.value)}
+                  style={{padding:"6px 10px",borderRadius:8,background:C.bg,border:`1px solid ${C.accent}`,color:C.text,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",minWidth:220}}>
+                  {weeks.map(w=>{
+                    const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+                    const label=`${formatDate(m,true)} → ${formatDate(s,true)} ${m.getFullYear()}${w.locked?" 🔒":""}`;
+                    return <option key={w.id} value={w.id}>{label}</option>;
+                  })}
+                </select>
+                <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selectedWeekId);if(idx>0)setSelectedWeekId(weeks[idx-1].id);}} disabled={weeks.findIndex(w=>w.id===selectedWeekId)===0} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14,opacity:weeks.findIndex(w=>w.id===selectedWeekId)===0?0.3:1}}>‹</button>
+                <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selectedWeekId);if(idx<weeks.length-1)setSelectedWeekId(weeks[idx+1].id);}} disabled={weeks.findIndex(w=>w.id===selectedWeekId)===weeks.length-1} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14,opacity:weeks.findIndex(w=>w.id===selectedWeekId)===weeks.length-1?0.3:1}}>›</button>
               </div>
             </div>
             <Card>
