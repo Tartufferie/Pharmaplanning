@@ -1980,16 +1980,7 @@ export default function App() {
         setSelectedWeekId(getMondayOf(new Date()).toISOString().slice(0,10));
       }
       setLoading(false);
-    }catch(e){
-      console.error("Load error:",e);
-      setSyncError(true);
-      setPharmaEmps(INIT_PHARMA_EMPS);setParaEmps(INIT_PARA_EMPS);
-      setPharmaWeeks(initWeeks(buildBaseTemplate(INIT_PHARMA_EMPS,"pharmacie"),"pharmacie"));
-      setParaWeeks(initWeeks(buildBaseTemplate(INIT_PARA_EMPS,"parapharmacie"),"parapharmacie"));
-      setSelectedWeekId(getMondayOf(new Date()).toISOString().slice(0,10));
-      setIsManager(true);
     }
-    setLoading(false);
   }
 
   // ── AUTO-SAVE WEEKS ──
