@@ -1,4 +1,4 @@
-// PharmaPlanning v5 - api rename
+// PharmaPlanning v5 - send center
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
@@ -1195,6 +1195,230 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
   );
 }
 
+
+// ─── SEND CENTER ─────────────────────────────────────────────────────────────
+function SendCenter({ employees, weeks }) {
+  const [selWeeks, setSelWeeks] = useState(new Set(weeks.slice(0,4).map(w=>w.id)));
+  const [selEmps,  setSelEmps]  = useState(new Set(employees.map(e=>e.id)));
+  const [status,   setStatus]   = useState({}); // { empId: "idle"|"sending"|"sent"|"error" }
+  const [sending,  setSending]  = useState(false);
+  const [log,      setLog]      = useState([]);
+
+  function toggleWeek(id) {
+    setSelWeeks(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  }
+  function toggleEmp(id) {
+    setSelEmps(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  }
+  function allEmpsOn()  { setSelEmps(new Set(employees.map(e=>e.id))); }
+  function allEmpsOff() { setSelEmps(new Set()); }
+  function allWeeksOn()  { setSelWeeks(new Set(weeks.map(w=>w.id))); }
+  function allWeeksOff() { setSelWeeks(new Set()); }
+
+  function roleColor(role) {
+    if(role==="titulaire") return C.titulaire;
+    if(role==="pharmacien") return C.pharma;
+    return C.accent;
+  }
+
+  // Build days data for an employee across selected weeks
+  function buildWeeksData(emp) {
+    const selectedWeeksList = weeks.filter(w => selWeeks.has(w.id));
+    return selectedWeeksList.map(week => {
+      const monday = new Date(week.monday);
+      const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
+      const weekLabel = `${formatDate(monday,true)} → ${formatDate(sunday,true)} ${monday.getFullYear()}`;
+      const days = DAYS.map((day,di) => {
+        const dd = week.data[day]?.[emp.id] || {};
+        const workH = Object.values(dd).filter(s=>s==="work").length * 0.5;
+        const pauseH = Object.values(dd).filter(s=>s==="pause").length * 0.5;
+        // Build work blocks
+        const blocks = []; let inB=false, bS=null, bT=null;
+        SLOTS.forEach((s,i) => {
+          const st=dd[s];
+          if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
+          else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
+        });
+        if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+        // Find pause slots
+        const pauseBlocks = []; let inP=false, pS=null;
+        SLOTS.forEach((s,i) => {
+          const st=dd[s];
+          if(st==="pause"&&!inP){inP=true;pS=s;}
+          else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
+        });
+        if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
+        const dateStr = formatDate(getDayDate(monday,di));
+        return { day, date:dateStr, workH, pauseH, blocks, pauseBlocks, isOff: workH===0&&pauseH===0 };
+      });
+      const totalH = days.reduce((a,d)=>a+d.workH,0);
+      return { weekLabel, days, totalH };
+    });
+  }
+
+  async function sendToOne(emp) {
+    if(!emp.email) return;
+    setStatus(prev=>({...prev,[emp.id]:"sending"}));
+    const weeksData = buildWeeksData(emp);
+    try {
+      const res = await fetch("/api/send-planning-v2", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ to:emp.email, name:emp.firstName, weeksData }),
+      });
+      if(res.ok) {
+        setStatus(prev=>({...prev,[emp.id]:"sent"}));
+        setLog(prev=>[{emp:emp.firstName, ok:true, ts:new Date().toLocaleTimeString("fr-FR")},...prev]);
+        setTimeout(()=>setStatus(prev=>({...prev,[emp.id]:"idle"})),4000);
+      } else {
+        throw new Error(await res.text());
+      }
+    } catch(e) {
+      setStatus(prev=>({...prev,[emp.id]:"error"}));
+      setLog(prev=>[{emp:emp.firstName, ok:false, err:e.message, ts:new Date().toLocaleTimeString("fr-FR")},...prev]);
+      setTimeout(()=>setStatus(prev=>({...prev,[emp.id]:"idle"})),4000);
+    }
+  }
+
+  async function sendToAll() {
+    setSending(true);
+    const targets = employees.filter(e=>selEmps.has(e.id)&&e.email);
+    for(const emp of targets) {
+      await sendToOne(emp);
+      await new Promise(r=>setTimeout(r,400)); // small delay between sends
+    }
+    setSending(false);
+  }
+
+  const readyToSend = selWeeks.size > 0 && selEmps.size > 0;
+  const groups = ["titulaire","pharmacien","preparateur"];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{color:C.text,margin:"0 0 4px",fontSize:18,fontWeight:700}}>📧 Envoi des plannings</h2>
+          <p style={{color:C.textMuted,fontSize:13,margin:0}}>Sélectionnez les semaines et les salariés, puis envoyez en un clic.</p>
+        </div>
+        <Btn onClick={sendToAll} disabled={!readyToSend||sending} style={{minWidth:180}}>
+          {sending ? "Envoi en cours…" : `📨 Envoyer à ${selEmps.size} salarié${selEmps.size>1?"s":""}`}
+        </Btn>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Week selector */}
+        <Card style={{padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{color:C.text,fontWeight:700,fontSize:14}}>Semaines à inclure</span>
+            <div style={{display:"flex",gap:6}}>
+              <Btn size="sm" variant="ghost" onClick={allWeeksOn}>Tout</Btn>
+              <Btn size="sm" variant="ghost" onClick={allWeeksOff}>Aucun</Btn>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:7}}>
+            {weeks.map(w=>{
+              const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+              const sel=selWeeks.has(w.id);
+              return(
+                <div key={w.id} onClick={()=>toggleWeek(w.id)} style={{
+                  display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,cursor:"pointer",
+                  border:`1px solid ${sel?C.accent:C.border}`,background:sel?C.accentDim:"transparent",transition:"all 0.1s"
+                }}>
+                  <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${sel?C.accent:C.textDim}`,background:sel?C.accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {sel&&<span style={{color:"#0F1923",fontSize:11,fontWeight:800}}>✓</span>}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{color:sel?C.text:C.textMuted,fontSize:13,fontWeight:500}}>
+                      {formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}
+                    </div>
+                    {w.locked&&<span style={{color:C.locked,fontSize:11}}>🔒 Verrouillé</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Employee selector */}
+        <Card style={{padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{color:C.text,fontWeight:700,fontSize:14}}>Salariés destinataires</span>
+            <div style={{display:"flex",gap:6}}>
+              <Btn size="sm" variant="ghost" onClick={allEmpsOn}>Tous</Btn>
+              <Btn size="sm" variant="ghost" onClick={allEmpsOff}>Aucun</Btn>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:320,overflowY:"auto"}}>
+            {groups.map(role=>{
+              const grp=employees.filter(e=>e.role===role);
+              if(!grp.length) return null;
+              return(
+                <div key={role}>
+                  <div style={{color:roleColor(role),fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",padding:"6px 4px 3px"}}>
+                    {role==="titulaire"?"◆ Titulaires":role==="pharmacien"?"◆ Pharmaciens":"◆ Préparateurs"}
+                  </div>
+                  {grp.map(emp=>{
+                    const sel=selEmps.has(emp.id);
+                    const st=status[emp.id]||"idle";
+                    return(
+                      <div key={emp.id} onClick={()=>toggleEmp(emp.id)} style={{
+                        display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:7,cursor:"pointer",
+                        border:`1px solid ${sel?roleColor(emp.role):C.border}`,
+                        background:sel?`${roleColor(emp.role)}11`:"transparent",
+                        transition:"all 0.1s",marginBottom:3,
+                      }}>
+                        <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${sel?roleColor(emp.role):C.textDim}`,background:sel?roleColor(emp.role):"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {sel&&<span style={{color:"#0F1923",fontSize:11,fontWeight:800}}>✓</span>}
+                        </div>
+                        <div style={{width:28,height:28,borderRadius:"50%",background:`${roleColor(emp.role)}22`,border:`2px solid ${roleColor(emp.role)}`,display:"flex",alignItems:"center",justifyContent:"center",color:roleColor(emp.role),fontWeight:700,fontSize:12,flexShrink:0}}>
+                          {emp.firstName[0]}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{color:C.text,fontSize:13,fontWeight:500}}>{emp.firstName} {emp.lastName}</div>
+                          <div style={{color:C.textDim,fontSize:11}}>{emp.email||"⚠ pas d'email"}</div>
+                        </div>
+                        {st==="sending"&&<span style={{color:C.textMuted,fontSize:11}}>Envoi…</span>}
+                        {st==="sent"&&<span style={{color:C.accent,fontSize:13}}>✓</span>}
+                        {st==="error"&&<span style={{color:C.danger,fontSize:13}}>⚠</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* Summary */}
+      {readyToSend&&(
+        <div style={{padding:"10px 14px",background:C.accentDim,borderRadius:8,border:`1px solid ${C.accent}33`}}>
+          <span style={{color:C.accent,fontSize:13}}>
+            📋 {selEmps.size} salarié{selEmps.size>1?"s":""} · {selWeeks.size} semaine{selWeeks.size>1?"s":""} par email · chaque salarié reçoit <strong>1 seul email</strong> avec tout son planning
+          </span>
+        </div>
+      )}
+
+      {/* Log */}
+      {log.length>0&&(
+        <Card style={{padding:14}}>
+          <div style={{color:C.textMuted,fontSize:12,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.08em"}}>Journal d'envoi</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:160,overflowY:"auto"}}>
+            {log.map((l,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+                <span style={{color:l.ok?C.accent:C.danger}}>{l.ok?"✓":"✗"}</span>
+                <span style={{color:C.text,fontWeight:500}}>{l.emp}</span>
+                <span style={{color:l.ok?C.accent:C.danger}}>{l.ok?"Email envoyé":l.err}</span>
+                <span style={{color:C.textDim,marginLeft:"auto"}}>{l.ts}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [setup,setSetup]=useState(false); // set true to show setup screen
@@ -1358,6 +1582,7 @@ export default function App() {
     {id:"trames",    label:"Grille horaire",   icon:"▦"},
     {id:"recap",     label:"Récapitulatif",    icon:"📊"},
     {id:"individual",label:"Planning",         icon:"◉"},
+    {id:"send",      label:"Envoi emails",     icon:"📧"},
     {id:"exchanges", label:pendingCount>0?`Échanges (${pendingCount})`:"Échanges",icon:"⇄"},
     {id:"employees", label:"Équipe",           icon:"◎"},
   ];
@@ -1450,6 +1675,7 @@ export default function App() {
           </div>
         )}
         {activeTab==="individual"&&<IndividualPlanning weeks={weeks} employees={employees}/>}
+        {activeTab==="send"&&<SendCenter employees={employees} weeks={weeks}/>}
         {activeTab==="exchanges"&&<Exchanges exchanges={exchanges.filter(e=>(weeks.find(w=>w.id===e.weekId)||e.sector===sector))} setExchanges={setExchanges} weeks={weeks} setWeeks={setWeeks} employees={employees}/>}
         {activeTab==="employees"&&<EmployeeManager employees={employees} setEmployees={setEmp} weeks={weeks} setWeeks={setWeeks} sector={sector}/>}
       </div>
