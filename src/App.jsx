@@ -1,4 +1,4 @@
-// PharmaPlanning v7 - auth complete
+// PharmaPlanning v5 - send center
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
@@ -22,35 +22,6 @@ async function sbFetch(path, options = {}) {
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
-}
-
-// ─── AUTH ────────────────────────────────────────────────────────────────────
-async function authSignIn(email, password) {
-  const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: { "apikey": SB_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error_description || "Email ou mot de passe incorrect");
-  }
-  return res.json();
-}
-
-async function authSignOut(token) {
-  await fetch(`${SB_URL}/auth/v1/logout`, {
-    method: "POST",
-    headers: { "apikey": SB_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-  });
-}
-
-async function authGetUser(token) {
-  const res = await fetch(`${SB_URL}/auth/v1/user`, {
-    headers: { "apikey": SB_KEY, "Authorization": `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
 }
 
 const db = {
@@ -322,7 +293,6 @@ function Btn({children,onClick,variant="primary",size="md",disabled,style={}}){
     ghost:{background:"transparent",color:C.textMuted,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.border}`},
     danger:{background:C.dangerDim,color:C.danger,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.danger}44`},
     success:{background:C.accentDim,color:C.accent,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.accent}44`},
-    purple:{background:C.purpleDim,color:C.purple,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.purple}44`},
   };
   return <button style={{...base,...v[variant],...style}} onClick={onClick} disabled={disabled}>{children}</button>;
 }
@@ -681,369 +651,6 @@ function SendPlanningBtn({emp, week}) {
   return <Btn size="sm" variant={variant} onClick={send} disabled={status === "sending" || !emp.email}>{label}</Btn>;
 }
 
-
-
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
-
-  async function handleLogin() {
-    if (!email || !password) return;
-    setLoading(true); setError("");
-    try {
-      const data = await authSignIn(email, password);
-      onLogin(data);
-    } catch(e) {
-      setError(e.message);
-    }
-    setLoading(false);
-  }
-
-  return (
-    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div style={{ width:"100%", maxWidth:400, display:"flex", flexDirection:"column", gap:20 }}>
-        {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:8 }}>
-          <div style={{ width:56, height:56, borderRadius:14, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:"#0F1923", fontWeight:900, margin:"0 auto 16px" }}>⊕</div>
-          <h1 style={{ color:C.text, fontWeight:800, fontSize:24, margin:"0 0 6px" }}>Pharma<span style={{ color:C.accent }}>Planning</span></h1>
-          <p style={{ color:C.textMuted, fontSize:14, margin:0 }}>Connectez-vous à votre espace</p>
-        </div>
-
-        {/* Form */}
-        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:28, display:"flex", flexDirection:"column", gap:16 }}>
-          <div>
-            <label style={{ color:C.textMuted, fontSize:12, display:"block", marginBottom:6, fontWeight:600 }}>Adresse email</label>
-            <input
-              type="email" value={email} onChange={e=>setEmail(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="votre@email.com" autoFocus
-              style={{ width:"100%", padding:"10px 14px", borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, color:C.text, fontFamily:"inherit", fontSize:14, boxSizing:"border-box", outline:"none" }}
-            />
-          </div>
-          <div>
-            <label style={{ color:C.textMuted, fontSize:12, display:"block", marginBottom:6, fontWeight:600 }}>Mot de passe</label>
-            <input
-              type="password" value={password} onChange={e=>setPassword(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="••••••••"
-              style={{ width:"100%", padding:"10px 14px", borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, color:C.text, fontFamily:"inherit", fontSize:14, boxSizing:"border-box", outline:"none" }}
-            />
-          </div>
-          {error && (
-            <div style={{ padding:"10px 12px", background:C.dangerDim, borderRadius:8, border:`1px solid ${C.danger}44` }}>
-              <span style={{ color:C.danger, fontSize:13, fontWeight:600 }}>⚠ {error}</span>
-            </div>
-          )}
-          <button
-            onClick={handleLogin} disabled={!email||!password||loading}
-            style={{ padding:"12px", borderRadius:8, border:"none", background:C.accent, color:"#0F1923", fontFamily:"inherit", fontWeight:700, fontSize:15, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, marginTop:4 }}>
-            {loading ? "Connexion…" : "Se connecter"}
-          </button>
-        </div>
-        <p style={{ textAlign:"center", color:C.textDim, fontSize:12, margin:0 }}>
-          Votre accès est créé par le manager de la pharmacie.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── EMPLOYEE VIEW ────────────────────────────────────────────────────────────
-function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSignOut }) {
-  const [activeTab, setActiveTab] = useState("planning");
-  const [exForm, setExForm] = useState({ to:"", day:"Lundi", timeFrom:"9h", timeTo:"14h", weekId:"", note:"" });
-  const [showExForm, setShowExForm] = useState(false);
-  const [exStatus, setExStatus] = useState("idle");
-
-  // Only show weeks that are locked (published) or current/future
-  const today = new Date(); today.setHours(0,0,0,0);
-  const visibleWeeks = weeks.filter(w => {
-    const monday = new Date(w.monday);
-    const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
-    return sunday >= today || w.locked;
-  }).sort((a,b) => new Date(a.monday)-new Date(b.monday));
-
-  const [selWeekId, setSelWeekId] = useState(visibleWeeks[0]?.id||"");
-  const week = visibleWeeks.find(w=>w.id===selWeekId) || visibleWeeks[0];
-  const monday = week ? new Date(week.monday) : null;
-  const weekH = week ? calcWeekHours(week.data, employee.id) : 0;
-  const diff = weekH - employee.contract;
-
-  // Candidates for exchange (free on A's slots)
-  const selWeekData = week?.data;
-  const aWorked = (exForm.weekId && selWeekData)
-    ? getWorkedInRange(selWeekData, exForm.day, employee.id, exForm.timeFrom, exForm.timeTo)
-    : [];
-  const candidates = useMemo(() => {
-    if (!aWorked.length || !selWeekData) return [];
-    return allEmployees.filter(e => e.id !== employee.id).map(e => {
-      const conflicts = getConflicts(selWeekData, exForm.day, employee.id, e.id, exForm.timeFrom, exForm.timeTo);
-      return { ...e, available: conflicts.length===0, conflicts };
-    }).sort((a,b) => b.available-a.available);
-  }, [exForm.to, exForm.day, exForm.timeFrom, exForm.timeTo, exForm.weekId, aWorked]);
-
-  async function submitExchange() {
-    if (!exForm.to || !aWorked.length) return;
-    setExStatus("sending");
-    try {
-      const newEx = {
-        id: uid(), weekId: exForm.weekId, from: employee.id, to: exForm.to,
-        fromName: employee.firstName,
-        toName: allEmployees.find(e=>e.id===exForm.to)?.firstName,
-        day: exForm.day, timeFrom: exForm.timeFrom, timeTo: exForm.timeTo,
-        workedSlots: aWorked, note: exForm.note, status:"pending",
-        createdAt: new Date().toLocaleDateString("fr-FR"),
-        sector: employee.sector,
-      };
-      await db.upsertExchange(newEx);
-      setExStatus("sent");
-      setShowExForm(false);
-      setTimeout(()=>setExStatus("idle"),3000);
-    } catch(e) {
-      setExStatus("error");
-      setTimeout(()=>setExStatus("idle"),3000);
-    }
-  }
-
-  function roleColor(role){
-    if(role==="titulaire") return C.titulaire;
-    if(role==="pharmacien") return C.pharma;
-    return C.accent;
-  }
-
-  const tabs = [
-    { id:"planning", label:"Mon planning", icon:"📅" },
-    { id:"exchange", label:"Demander un échange", icon:"⇄" },
-  ];
-
-  return (
-    <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Inter',system-ui,sans-serif", color:C.text }}>
-      {/* Top bar */}
-      <div style={{ position:"sticky", top:0, zIndex:100, background:`${C.surface}EE`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"0 20px", display:"flex", alignItems:"center", gap:16, height:56 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:28, borderRadius:7, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#0F1923", fontWeight:900 }}>⊕</div>
-          <span style={{ fontSize:14, fontWeight:800, color:C.text, letterSpacing:"-0.02em" }}>Pharma<span style={{ color:C.accent }}>Planning</span></span>
-        </div>
-        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:30, height:30, borderRadius:"50%", background:`${roleColor(employee.role)}22`, border:`2px solid ${roleColor(employee.role)}`, display:"flex", alignItems:"center", justifyContent:"center", color:roleColor(employee.role), fontWeight:700, fontSize:13 }}>
-              {employee.firstName[0]}
-            </div>
-            <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>{employee.firstName}</span>
-          </div>
-          <button onClick={onSignOut} style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.textMuted, cursor:"pointer", fontFamily:"inherit", fontSize:12 }}>
-            Déconnexion
-          </button>
-        </div>
-      </div>
-
-      {/* Nav */}
-      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 20px", display:"flex", gap:2 }}>
-        {tabs.map(tab=>(
-          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{ padding:"12px 16px", background:"transparent", border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:600, color:activeTab===tab.id?C.accent:C.textMuted, borderBottom:`2px solid ${activeTab===tab.id?C.accent:"transparent"}`, transition:"all 0.15s" }}>
-            <span style={{ marginRight:6 }}>{tab.icon}</span>{tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div style={{ padding:"20px", maxWidth:800, margin:"0 auto" }}>
-
-        {activeTab==="planning" && (
-          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-            {/* Week selector */}
-            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-              <span style={{ color:C.textMuted, fontSize:13 }}>Semaine :</span>
-              <select value={selWeekId} onChange={e=>setSelWeekId(e.target.value)}
-                style={{ padding:"7px 12px", borderRadius:8, background:C.bg, border:`1px solid ${C.accent}`, color:C.text, fontFamily:"inherit", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-                {visibleWeeks.map(w=>{
-                  const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
-                  return <option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;
-                })}
-              </select>
-            </div>
-
-            {/* Stats card */}
-            {week && (
-              <Card style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
-                <div style={{ width:52, height:52, borderRadius:"50%", background:`${roleColor(employee.role)}22`, border:`2px solid ${roleColor(employee.role)}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:roleColor(employee.role), fontWeight:700 }}>
-                  {employee.firstName[0]}
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:18, fontWeight:700, color:C.text }}>{employee.firstName} {employee.lastName}</div>
-                  <Badge color={roleColor(employee.role)}>{employee.role==="titulaire"?"Titulaire (WP)":employee.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:26, fontWeight:700, color:diff>0?C.warning:C.accent }}>{weekH}h</div>
-                  <div style={{ color:C.textMuted, fontSize:12 }}>/ {employee.contract}h contrat</div>
-                  {Math.abs(diff)>0.25 && <Badge color={diff>0?C.warning:C.accent}>{diff>0?"+":""}{diff.toFixed(1)}h</Badge>}
-                </div>
-              </Card>
-            )}
-
-            {/* Day cards */}
-            {week && (
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:10 }}>
-                {DAYS.map((day,di) => {
-                  const dd = week.data[day]?.[employee.id] || {};
-                  const workH = Object.values(dd).filter(s=>s==="work").length*0.5;
-                  const pauseH = Object.values(dd).filter(s=>s==="pause").length*0.5;
-                  const isOff = workH===0 && pauseH===0;
-                  const dateLabel = monday ? formatDate(getDayDate(monday,di)) : "";
-
-                  // Work blocks
-                  const blocks=[]; let inB=false,bS=null,bT=null;
-                  SLOTS.forEach((s,i)=>{
-                    const st=dd[s];
-                    if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
-                    else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
-                  });
-                  if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
-
-                  // Pause blocks
-                  const pauseBlocks=[]; let inP=false,pS=null;
-                  SLOTS.forEach((s,i)=>{
-                    const st=dd[s];
-                    if(st==="pause"&&!inP){inP=true;pS=s;}
-                    else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
-                  });
-                  if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
-
-                  return (
-                    <Card key={day} style={{ borderColor:isOff?C.border:`${C.accent}33`, padding:14 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                        <div>
-                          <span style={{ fontWeight:700, color:isOff?C.textMuted:C.text, fontSize:14 }}>{day}</span>
-                          <span style={{ color:C.textDim, fontSize:11, marginLeft:6 }}>{dateLabel}</span>
-                        </div>
-                        <span style={{ color:isOff?C.textDim:C.accent, fontSize:13, fontWeight:600 }}>{isOff?"Repos":`${workH}h`}</span>
-                      </div>
-                      {isOff ? (
-                        <div style={{ color:C.textDim, fontSize:12, fontStyle:"italic" }}>Repos / Absent</div>
-                      ) : (
-                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                          {blocks.filter(b=>b.type==="work").map((b,i)=>(
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 10px", borderRadius:6, background:C.accentDim, border:`1px solid ${C.accent}33` }}>
-                              <span style={{ color:C.accent, fontSize:13, fontWeight:600 }}>🕐 {b.from} → {b.to}</span>
-                            </div>
-                          ))}
-                          {pauseBlocks.map((p,i)=>(
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px", borderRadius:6, background:C.pauseDim, border:`1px solid ${C.pause}33` }}>
-                              <span style={{ color:C.pause, fontSize:12 }}>☕ Pause : {p.from} → {p.to}</span>
-                            </div>
-                          ))}
-                          <div style={{ display:"flex", height:4, borderRadius:2, overflow:"hidden", marginTop:3 }}>
-                            {SLOTS.map(s=><div key={s} style={{ flex:1, background:dd[s]==="work"?C.accent:dd[s]==="pause"?C.pause:"transparent" }}/>)}
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-
-            {visibleWeeks.length===0&&(
-              <Card><div style={{ textAlign:"center", padding:40, color:C.textMuted }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>📅</div>
-                <div style={{ fontWeight:600 }}>Aucun planning disponible pour le moment.</div>
-                <div style={{ fontSize:13, marginTop:4 }}>Votre manager publiera les plannings prochainement.</div>
-              </div></Card>
-            )}
-          </div>
-        )}
-
-        {activeTab==="exchange" && (
-          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-            <div>
-              <h3 style={{ color:C.text, fontWeight:700, margin:"0 0 4px" }}>Demander un échange de poste</h3>
-              <p style={{ color:C.textMuted, fontSize:13, margin:0 }}>Votre demande sera soumise au manager pour validation.</p>
-            </div>
-
-            {exStatus==="sent"&&(
-              <div style={{ padding:"12px 16px", background:C.accentDim, borderRadius:8, border:`1px solid ${C.accent}33` }}>
-                <span style={{ color:C.accent, fontWeight:600 }}>✓ Demande envoyée — en attente de validation du manager.</span>
-              </div>
-            )}
-
-            <Card style={{ border:`1px solid ${C.accent}44` }}>
-              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                <div style={{ color:C.textDim, fontSize:10, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase" }}>1 · Semaine et jour</div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                  <Sel label="Semaine" value={exForm.weekId} onChange={v=>setExForm(f=>({...f,weekId:v,to:""}))}>
-                    <option value="">Choisir...</option>
-                    {visibleWeeks.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);return<option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)}</option>;})}
-                  </Sel>
-                  <Sel label="Jour" value={exForm.day} onChange={v=>setExForm(f=>({...f,day:v,to:""}))}>
-                    {DAYS.filter(d=>d!=="Dimanche").map(d=><option key={d}>{d}</option>)}
-                  </Sel>
-                </div>
-
-                {exForm.weekId&&(
-                  <>
-                    <div style={{ color:C.textDim, fontSize:10, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase" }}>2 · Plage horaire</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                      <Sel label="De" value={exForm.timeFrom} onChange={v=>setExForm(f=>({...f,timeFrom:v,to:""}))}>
-                        {SLOTS.map(s=><option key={s}>{s}</option>)}
-                      </Sel>
-                      <Sel label="À" value={exForm.timeTo} onChange={v=>setExForm(f=>({...f,timeTo:v,to:""}))}>
-                        {SLOTS.filter(s=>slotToMin(s)>slotToMin(exForm.timeFrom)).map(s=><option key={s}>{s}</option>)}
-                      </Sel>
-                    </div>
-                    {aWorked.length>0?(
-                      <div style={{ padding:"8px 12px", background:C.accentDim, borderRadius:8, border:`1px solid ${C.accent}33` }}>
-                        <span style={{ color:C.accent, fontSize:12, fontWeight:600 }}>✓ Vous travaillez sur {aWorked.length} créneau(x) : {aWorked[0]} → {aWorked[aWorked.length-1]}</span>
-                      </div>
-                    ):(
-                      <div style={{ padding:"8px 12px", background:C.dangerDim, borderRadius:8, border:`1px solid ${C.danger}33` }}>
-                        <span style={{ color:C.danger, fontSize:12 }}>✗ Vous n'êtes pas en poste sur cette plage.</span>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {aWorked.length>0&&(
-                  <>
-                    <div style={{ color:C.textDim, fontSize:10, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase" }}>3 · Collègue remplaçant</div>
-                    <div style={{ display:"flex", flexDirection:"column", gap:5, maxHeight:220, overflowY:"auto" }}>
-                      {candidates.map(c=>{
-                        const sel=exForm.to===c.id;
-                        return(
-                          <div key={c.id} onClick={()=>c.available&&setExForm(f=>({...f,to:c.id}))} style={{
-                            display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:8,
-                            cursor:c.available?"pointer":"not-allowed",
-                            border:`1px solid ${sel?C.accent:c.available?C.border:C.danger+"33"}`,
-                            background:sel?C.accentDim:c.available?C.surfaceHover:`${C.danger}07`,
-                            opacity:c.available?1:0.6,
-                          }}>
-                            <div style={{ width:28, height:28, borderRadius:"50%", background:c.available?(sel?C.accent:C.accentDim):C.dangerDim, border:`2px solid ${c.available?(sel?C.accent:C.border):C.danger}`, display:"flex", alignItems:"center", justifyContent:"center", color:c.available?(sel?"#0F1923":C.accent):C.danger, fontWeight:700, fontSize:12 }}>{c.firstName[0]}</div>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontWeight:600, fontSize:13, color:c.available?C.text:C.textMuted }}>{c.firstName} {c.lastName}</div>
-                              <div style={{ fontSize:11, color:C.textDim }}>{c.role==="pharmacien"?"Pharmacien":"Préparateur"}</div>
-                            </div>
-                            {c.available?<Badge color={C.accent}>Disponible</Badge>:<Badge color={C.danger}>Déjà en poste</Badge>}
-                            {sel&&<span style={{ color:C.accent, fontSize:16 }}>✓</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <Inp label="Note (optionnel)" value={exForm.note} onChange={v=>setExForm(f=>({...f,note:v}))} placeholder="Raison de l'échange..."/>
-                    <Btn onClick={submitExchange} disabled={!exForm.to||exStatus==="sending"}>
-                      {exStatus==="sending"?"Envoi…":"Soumettre la demande"}
-                    </Btn>
-                  </>
-                )}
-              </div>
-            </Card>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── RECAP TABLE ─────────────────────────────────────────────────────────────
 function RecapTable({weeks,employees,sector}){
@@ -1516,29 +1123,6 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
   const [confirmDel,setConfirmDel]=useState(null);
   const [saving,setSaving]=useState(false);
 
-  const [createAccount, setCreateAccount] = useState(false);
-  const [accountPassword, setAccountPassword] = useState("");
-  const [accountStatus, setAccountStatus] = useState(""); // ""| "creating"|"done"|"error"
-
-  async function createEmployeeAccount(emp) {
-    if(!accountPassword||accountPassword.length<6) return;
-    setAccountStatus("creating");
-    try {
-      const res = await fetch("/api/create-account", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ email:emp.email, firstName:emp.firstName, password:accountPassword }),
-      });
-      const data = await res.json();
-      if(data.success) { setAccountStatus("done"); setTimeout(()=>setAccountStatus(""),3000); }
-      else throw new Error(data.error);
-    } catch(e) {
-      setAccountStatus("error");
-      setTimeout(()=>setAccountStatus(""),3000);
-    }
-    setAccountPassword("");
-  }
-
   async function save(){
     if(!form.firstName.trim()||!form.email.trim())return;
     setSaving(true);
@@ -1588,25 +1172,6 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
           <div style={{display:"flex",gap:8,marginTop:12}}><Btn onClick={save} disabled={!form.firstName.trim()||!form.email.trim()||saving}>{saving?"Enregistrement…":"Enregistrer"}</Btn><Btn variant="ghost" onClick={()=>setShowForm(false)}>Annuler</Btn></div>
         </Card>
       )}
-      {createAccount&&(
-        <Card style={{border:`1px solid ${C.purple}44`,background:C.purpleDim}}>
-          <h4 style={{color:C.purple,margin:"0 0 12px",fontWeight:700}}>🔑 Créer accès pour {createAccount.firstName}</h4>
-          <p style={{color:C.textMuted,fontSize:13,margin:"0 0 12px"}}>
-            Définissez un mot de passe temporaire. Le salarié pourra se connecter avec <strong style={{color:C.text}}>{createAccount.email}</strong>.
-          </p>
-          <div style={{marginBottom:12}}>
-            <Inp label="Mot de passe temporaire (6 caractères min.)" value={accountPassword} onChange={v=>setAccountPassword(v)} placeholder="Ex: Pharma2024!" type="password"/>
-          </div>
-          {accountStatus==="done"&&<div style={{padding:"8px 12px",background:C.accentDim,borderRadius:8,marginBottom:10}}><span style={{color:C.accent,fontWeight:600}}>✓ Compte créé ! {createAccount.firstName} peut maintenant se connecter.</span></div>}
-          {accountStatus==="error"&&<div style={{padding:"8px 12px",background:C.dangerDim,borderRadius:8,marginBottom:10}}><span style={{color:C.danger,fontWeight:600}}>⚠ Erreur — vérifiez que SUPABASE_SERVICE_KEY est configurée dans Vercel.</span></div>}
-          <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>createEmployeeAccount(createAccount)} disabled={accountPassword.length<6||accountStatus==="creating"} style={{background:C.purple,color:"#fff"}}>
-              {accountStatus==="creating"?"Création…":"Créer le compte"}
-            </Btn>
-            <Btn variant="ghost" onClick={()=>{setCreateAccount(null);setAccountPassword("");}}>Fermer</Btn>
-          </div>
-        </Card>
-      )}
       {confirmDel&&(
         <Card style={{border:`1px solid ${C.danger}44`,background:C.dangerDim}}>
           <p style={{color:C.text,margin:"0 0 10px"}}>Supprimer <strong>{confirmDel.firstName} {confirmDel.lastName}</strong> et tous ses créneaux ?</p>
@@ -1621,11 +1186,7 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
               <div style={{flex:1}}><div style={{color:C.text,fontWeight:600,fontSize:14}}>{emp.firstName} {emp.lastName}</div><div style={{color:C.textMuted,fontSize:12}}>{emp.email}</div></div>
               <Badge color={emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}>{emp.role==="titulaire"?"Titulaire (WP)":emp.role==="pharmacien"?"Pharmacien":"Préparateur"}</Badge>
               <Badge color={C.textMuted}>{emp.contract}h/sem</Badge>
-              <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                <Btn size="sm" variant="ghost" onClick={()=>{setEditId(emp.id);setForm({firstName:emp.firstName,lastName:emp.lastName,email:emp.email,role:emp.role,contract:emp.contract});setShowForm(true);}}>Modifier</Btn>
-                <Btn size="sm" variant="purple" onClick={()=>{setCreateAccount(emp);setAccountPassword("");}}>🔑 Créer accès</Btn>
-                <Btn size="sm" variant="danger" onClick={()=>setConfirmDel(emp)}>Supprimer</Btn>
-              </div>
+              <div style={{display:"flex",gap:7}}><Btn size="sm" variant="ghost" onClick={()=>{setEditId(emp.id);setForm({firstName:emp.firstName,lastName:emp.lastName,email:emp.email,role:emp.role,contract:emp.contract});setShowForm(true);}}>Modifier</Btn><Btn size="sm" variant="danger" onClick={()=>setConfirmDel(emp)}>Supprimer</Btn></div>
             </div>
           </Card>
         ))}
@@ -1860,14 +1421,10 @@ function SendCenter({ employees, weeks }) {
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [setup,setSetup]=useState(false);
+  const [setup,setSetup]=useState(false); // set true to show setup screen
   const [loading,setLoading]=useState(true);
   const [syncing,setSyncing]=useState(false);
   const [syncError,setSyncError]=useState(false);
-  // Auth
-  const [session,setSession]=useState(null);   // Supabase session
-  const [currentUser,setCurrentUser]=useState(null); // matched employee record
-  const [isManager,setIsManager]=useState(false);
 
   const [pharmaEmps,setPharmaEmps]=useState([]);
   const [paraEmps,setParaEmps]=useState([]);
@@ -1882,50 +1439,11 @@ export default function App() {
   const [unlockError,setUnlockError]=useState(false);
   const clickTimes=useRef([]);
 
-  // ── CHECK STORED SESSION ──
-  useEffect(()=>{
-    const stored = localStorage.getItem("pp_session");
-    if(stored) {
-      try {
-        const s = JSON.parse(stored);
-        handleLogin(s);
-      } catch(e) {
-        localStorage.removeItem("pp_session");
-        setLoading(false);
-      }
-    } else {
-      setLoading(false);
-    }
-  },[]);
-
-  async function handleLogin(sessionData) {
-    setLoading(true);
-    try {
-      // Verify token still valid
-      const user = await authGetUser(sessionData.access_token);
-      if(!user) throw new Error("Session expirée");
-      localStorage.setItem("pp_session", JSON.stringify(sessionData));
-      setSession(sessionData);
-      // Load all data
-      await loadData(sessionData.access_token, user.email);
-    } catch(e) {
-      localStorage.removeItem("pp_session");
-      setLoading(false);
-    }
-  }
-
-  async function handleSignOut() {
-    if(session) await authSignOut(session.access_token).catch(()=>{});
-    localStorage.removeItem("pp_session");
-    setSession(null); setCurrentUser(null); setIsManager(false);
-    setPharmaEmps([]); setParaEmps([]); setPharmaWeeks([]); setParaWeeks([]);
-    setExchanges([]);
-  }
-
   // ── LOAD FROM SUPABASE ──
-  async function loadData(token, email) {
-    setLoading(true);
-    try{
+  useEffect(()=>{
+    async function load(){
+      setLoading(true);
+      try{
         // Load employees
         let [pEmps,paraE]=await Promise.all([db.getEmployees("pharmacie"),db.getEmployees("parapharmacie")]);
         // If empty, seed with initial data
@@ -1938,17 +1456,6 @@ export default function App() {
           paraE=INIT_PARA_EMPS;
         }
         setPharmaEmps(pEmps);setParaEmps(paraE);
-
-        // Determine if manager or employee
-        const allEmps=[...pEmps,...paraE];
-        const matched=allEmps.find(e=>e.email?.toLowerCase()===email?.toLowerCase());
-        if(matched) {
-          setCurrentUser(matched);
-          setIsManager(matched.role==="titulaire");
-        } else {
-          // Email not found in employees — treat as manager
-          setIsManager(true);
-        }
 
         // Load weeks
         let [pWeeks,prWeeks]=await Promise.all([db.getWeeks("pharmacie"),db.getWeeks("parapharmacie")]);
@@ -1980,17 +1487,9 @@ export default function App() {
         setSelectedWeekId(getMondayOf(new Date()).toISOString().slice(0,10));
       }
       setLoading(false);
-    }catch(e){
-      console.error("Load error:",e);
-      setSyncError(true);
-      setPharmaEmps(INIT_PHARMA_EMPS);setParaEmps(INIT_PARA_EMPS);
-      setPharmaWeeks(initWeeks(buildBaseTemplate(INIT_PHARMA_EMPS,"pharmacie"),"pharmacie"));
-      setParaWeeks(initWeeks(buildBaseTemplate(INIT_PARA_EMPS,"parapharmacie"),"parapharmacie"));
-      setSelectedWeekId(getMondayOf(new Date()).toISOString().slice(0,10));
-      setIsManager(true);
     }
-    setLoading(false);
-  }
+    load();
+  },[]);
 
   // ── AUTO-SAVE WEEKS ──
   async function saveWeek(week){
@@ -2068,8 +1567,6 @@ export default function App() {
 
   if(setup) return <SetupScreen onDone={()=>setSetup(false)}/>;
 
-  if(!session&&!loading) return <LoginScreen onLogin={handleLogin}/>;
-
   if(loading) return(
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div style={{width:48,height:48,borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#0F1923",fontWeight:900}}>⊕</div>
@@ -2077,13 +1574,6 @@ export default function App() {
       {syncError&&<div style={{color:C.warning,fontSize:12}}>Connexion Supabase lente — utilisation des données locales</div>}
     </div>
   );
-
-  // Employee view
-  if(session&&!isManager&&currentUser) {
-    const empWeeks = currentUser.sector==="pharmacie" ? pharmaWeeks : paraWeeks;
-    const empAllEmps = currentUser.sector==="pharmacie" ? pharmaEmps : paraEmps;
-    return <EmployeeView employee={currentUser} weeks={empWeeks} allEmployees={empAllEmps} onSignOut={handleSignOut}/>;
-  }
 
   const pendingCount=exchanges.filter(e=>e.status==="pending").length;
   const totalAlerts=selectedWeek?DAYS.flatMap(d=>sector==="pharmacie"?checkRules(selectedWeek.data,employees,d):[]).filter(a=>a.type==="danger").length:0;
@@ -2132,7 +1622,6 @@ export default function App() {
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
           <SyncBadge syncing={syncing} error={syncError}/>
           <Badge color={C.accent}>Manager</Badge>
-          <button onClick={handleSignOut} style={{padding:"4px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:11}}>Déconnexion</button>
         </div>
       </div>
 
