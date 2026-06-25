@@ -1,5 +1,5 @@
 // api/send-planning-v2.js
-// Vercel serverless function — envoi via Brevo (ex-Sendinblue)
+// Vercele serverless function — envoi via Brevo (ex-Sendinblue)
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
