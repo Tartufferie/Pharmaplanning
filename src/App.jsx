@@ -1,9 +1,9 @@
-// PharmaPlanning v4 - dropdowns + couleurs + vue mensuelle
+// PharmaPlanning v5 - api rename
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
+const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -634,7 +634,7 @@ function SendPlanningBtn({emp, week}) {
     const weekLabel = `${formatDate(monday, true)} au ${formatDate(sunday, true)}`;
 
     try {
-      const res = await fetch("/api/send-planning", {
+      const res = await fetch("/api/send-planning-v2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to: emp.email, name: emp.firstName, weekLabel, days }),
