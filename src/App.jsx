@@ -1981,7 +1981,6 @@ export default function App() {
       }
       setLoading(false);
     }
-  }
 
   // ── AUTO-SAVE WEEKS ──
   async function saveWeek(week){
