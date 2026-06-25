@@ -1,5 +1,5 @@
 // api/send-planning.js
-// Vercel serverless function — appelée depuis le front React 
+// Vercel serverless function — appelée depuis le front React
 
 export default async function handler(req, res) {
   // CORS
