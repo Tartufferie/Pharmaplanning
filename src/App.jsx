@@ -1,4 +1,4 @@
-// PharmaPlanning v8 - SDK Supabase (auth + refresh auto + RLS ready)
+// PharmaPlanning v9 - fix toggleSlot titulaires
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -2022,7 +2022,9 @@ export default function App() {
   async function toggleSlot(weekId,day,empId,slot){
     const w=weeks.find(wk=>wk.id===weekId);if(!w||w.locked)return;
     const next=JSON.parse(JSON.stringify(w));
-    const cur=next.data[day]?.[empId]?.[slot]||"off";
+    if(!next.data[day]) next.data[day]={};
+    if(!next.data[day][empId]) next.data[day][empId]=Object.fromEntries(SLOTS.map(s=>[s,"off"]));
+    const cur=next.data[day][empId][slot]||"off";
     next.data[day][empId][slot]=cur==="off"?"work":cur==="work"?"pause":"off";
     setWeeks(prev=>prev.map(wk=>wk.id===weekId?next:wk));
     await saveWeek(next);
