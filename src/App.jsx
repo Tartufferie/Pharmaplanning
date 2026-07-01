@@ -1,4 +1,4 @@
-// PharmaPlanning v9 - fix toggleSlot titulaires
+// PharmaPlanning v10 - fix SendPlanningBtn format
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -629,35 +629,38 @@ function SendPlanningBtn({emp, week}) {
     if(!emp.email || !week) return;
     setStatus("sending");
     const monday = new Date(week.monday);
+    const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+    const weekLabel = `${formatDate(monday, true)} → ${formatDate(sunday, true)} ${monday.getFullYear()}`;
 
     const days = DAYS.map((day, di) => {
       const dd = week.data[day]?.[emp.id] || {};
-      const h = calcHours(dd);
-      const blocks = [];
-      let inB = false, bS = null;
-      SLOTS.forEach((s, i) => {
-        const st = dd[s];
-        if ((st === "work" || st === "pause") && !inB) { inB = true; bS = s; }
-        else if (st !== "work" && st !== "pause" && inB) { blocks.push(`${bS}→${SLOTS[i-1]}`); inB = false; }
+      const workH = Object.values(dd).filter(s=>s==="work").length * 0.5;
+      const pauseH = Object.values(dd).filter(s=>s==="pause").length * 0.5;
+      const blocks = []; let inB=false, bS=null, bT=null;
+      SLOTS.forEach((s,i) => {
+        const st=dd[s];
+        if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
+        else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
       });
-      if (inB) blocks.push(`${bS}→${SLOTS[SLOTS.length-1]}`);
-      const date = getDayDate(monday, di);
-      return {
-        day,
-        date: formatDate(date),
-        hours: h,
-        blocks: blocks.join("  |  ") || "—",
-      };
+      if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+      const pauseBlocks = []; let inP=false, pS=null;
+      SLOTS.forEach((s,i) => {
+        const st=dd[s];
+        if(st==="pause"&&!inP){inP=true;pS=s;}
+        else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
+      });
+      if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
+      return { day, date: formatDate(getDayDate(monday,di)), workH, pauseH, blocks, pauseBlocks, isOff: workH===0&&pauseH===0 };
     });
 
-    const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
-    const weekLabel = `${formatDate(monday, true)} au ${formatDate(sunday, true)}`;
+    const totalH = days.reduce((a,d)=>a+d.workH,0);
+    const weeksData = [{ weekLabel, days, totalH }];
 
     try {
       const res = await fetch("/api/send-planning-v2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: emp.email, name: emp.firstName, weekLabel, days }),
+        body: JSON.stringify({ to: emp.email, name: emp.firstName, weeksData }),
       });
       if (res.ok) { setStatus("sent"); setTimeout(() => setStatus("idle"), 3000); }
       else { setStatus("error"); setTimeout(() => setStatus("idle"), 3000); }
