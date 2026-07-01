@@ -1,99 +1,89 @@
-// PharmaPlanning v7 - auth complete
+// PharmaPlanning v8 - SDK Supabase (auth + refresh auto + RLS ready)
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
 const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
 
-async function sbFetch(path, options = {}) {
-  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      "apikey": SB_KEY,
-      "Authorization": `Bearer ${SB_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": options.prefer || "return=representation",
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Supabase error ${res.status}: ${err}`);
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
+// Client unique. Le SDK gère : envoi du token de session sur chaque requête,
+// refresh automatique avant expiration, persistance dans localStorage.
+const supabase = createClient(SB_URL, SB_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 async function authSignIn(email, password) {
-  const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: { "apikey": SB_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error_description || "Email ou mot de passe incorrect");
-  }
-  return res.json();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message || "Email ou mot de passe incorrect");
+  return data.session;
 }
 
-async function authSignOut(token) {
-  await fetch(`${SB_URL}/auth/v1/logout`, {
-    method: "POST",
-    headers: { "apikey": SB_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-  });
+async function authSignOut() {
+  await supabase.auth.signOut();
 }
 
-async function authGetUser(token) {
-  const res = await fetch(`${SB_URL}/auth/v1/user`, {
-    headers: { "apikey": SB_KEY, "Authorization": `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
+async function authGetUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) return null;
+  return data.user;
 }
 
+// Toutes les requêtes passent par le client SDK, qui joint automatiquement
+// le token de session de l'utilisateur connecté → compatible RLS.
 const db = {
   // Employees
   async getEmployees(sector) {
-    return sbFetch(`employees?sector=eq.${sector}&order=created_at.asc`);
+    const { data, error } = await supabase
+      .from("employees").select("*")
+      .eq("sector", sector).order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data;
   },
   async upsertEmployee(emp) {
-    return sbFetch("employees", {
-      method: "POST",
-      prefer: "return=representation",
-      headers: { "Prefer": "return=representation,resolution=merge-duplicates" },
-      body: JSON.stringify(emp),
-    });
+    const { data, error } = await supabase
+      .from("employees").upsert(emp).select();
+    if (error) throw new Error(error.message);
+    return data;
   },
   async deleteEmployee(id) {
-    return sbFetch(`employees?id=eq.${id}`, { method: "DELETE", prefer: "" });
+    const { error } = await supabase.from("employees").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    return null;
   },
 
   // Weeks
   async getWeeks(sector) {
-    return sbFetch(`weeks?sector=eq.${sector}&order=monday.asc`);
+    const { data, error } = await supabase
+      .from("weeks").select("*")
+      .eq("sector", sector).order("monday", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data;
   },
   async upsertWeek(week) {
-    return sbFetch("weeks", {
-      method: "POST",
-      prefer: "return=representation",
-      headers: { "Prefer": "return=representation,resolution=merge-duplicates" },
-      body: JSON.stringify(week),
-    });
+    const { data, error } = await supabase
+      .from("weeks").upsert(week).select();
+    if (error) throw new Error(error.message);
+    return data;
   },
 
   // Exchanges
   async getExchanges(sector) {
-    return sbFetch(`exchanges?sector=eq.${sector}&order=created_at.desc`);
+    const { data, error } = await supabase
+      .from("exchanges").select("*")
+      .eq("sector", sector).order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data;
   },
   async upsertExchange(ex) {
-    return sbFetch("exchanges", {
-      method: "POST",
-      prefer: "return=representation",
-      headers: { "Prefer": "return=representation,resolution=merge-duplicates" },
-      body: JSON.stringify(ex),
-    });
+    const { data, error } = await supabase
+      .from("exchanges").upsert(ex).select();
+    if (error) throw new Error(error.message);
+    return data;
   },
 };
 
@@ -1882,48 +1872,59 @@ export default function App() {
   const [unlockError,setUnlockError]=useState(false);
   const clickTimes=useRef([]);
 
-  // ── CHECK STORED SESSION ──
+  // ── CHECK SESSION AU DÉMARRAGE (le SDK lit son propre localStorage) ──
   useEffect(()=>{
-    const stored = localStorage.getItem("pp_session");
-    if(stored) {
-      try {
-        const s = JSON.parse(stored);
-        handleLogin(s);
-      } catch(e) {
-        localStorage.removeItem("pp_session");
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if(!mounted) return;
+      if(data?.session) {
+        await handleSessionActive(data.session);
+      } else {
         setLoading(false);
       }
-    } else {
-      setLoading(false);
-    }
+    })();
+
+    // Réagit au refresh automatique du token et au logout
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+      if(event === "SIGNED_OUT" || !sess) {
+        setSession(null); setCurrentUser(null); setIsManager(false);
+      } else if(event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setSession(sess);
+      }
+    });
+
+    return () => { mounted = false; sub?.subscription?.unsubscribe?.(); };
   },[]);
 
+  // Appelé par LoginScreen après signInWithPassword réussi
   async function handleLogin(sessionData) {
+    await handleSessionActive(sessionData);
+  }
+
+  async function handleSessionActive(sessionData) {
     setLoading(true);
     try {
-      // Verify token still valid
-      const user = await authGetUser(sessionData.access_token);
-      if(!user) throw new Error("Session expirée");
-      localStorage.setItem("pp_session", JSON.stringify(sessionData));
+      const user = await authGetUser();
+      if(!user) throw new Error("Session invalide");
       setSession(sessionData);
-      // Load all data
-      await loadData(sessionData.access_token, user.email);
+      await loadData(user.email);
     } catch(e) {
-      localStorage.removeItem("pp_session");
+      await supabase.auth.signOut().catch(()=>{});
+      setSession(null);
       setLoading(false);
     }
   }
 
   async function handleSignOut() {
-    if(session) await authSignOut(session.access_token).catch(()=>{});
-    localStorage.removeItem("pp_session");
+    await authSignOut().catch(()=>{});
     setSession(null); setCurrentUser(null); setIsManager(false);
     setPharmaEmps([]); setParaEmps([]); setPharmaWeeks([]); setParaWeeks([]);
     setExchanges([]);
   }
 
   // ── LOAD FROM SUPABASE ──
-  async function loadData(token, email) {
+  async function loadData(email) {
     setLoading(true);
     try{
         // Load employees
