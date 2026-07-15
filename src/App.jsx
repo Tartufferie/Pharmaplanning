@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
+const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
 
 // Client unique. Le SDK gère : envoi du token de session sur chaque requête,
 // refresh automatique avant expiration, persistance dans localStorage.
