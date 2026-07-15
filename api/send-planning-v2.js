@@ -122,7 +122,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        sender: { name: "PharmaPlanning", email: "wackenthaler.p@gmail.com" },
+        sender: { name: "PharmaPlanning", email: process.env.SENDER_EMAIL || "wackenthaler.p@gmail.com" },
         to: [{ email: to, name }],
         subject,
         htmlContent: html,

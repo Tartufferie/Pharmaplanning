@@ -1,10 +1,10 @@
-// PharmaPlanning v10 - fix SendPlanningBtn format
+// PharmaPlanning v11 - duplication + sécurité audit
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
+const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
 
 // Client unique. Le SDK gère : envoi du token de session sur chaque requête,
 // refresh automatique avant expiration, persistance dans localStorage.
@@ -87,6 +87,9 @@ const db = {
   },
 };
 
+// Remontée d'erreur globale vers le SyncBadge (réassignée par App au montage)
+let reportSyncError = () => {};
+
 // SQL to create tables (shown in setup screen)
 const SETUP_SQL = `
 -- Run this in your Supabase SQL editor
@@ -130,10 +133,9 @@ create table if not exists exchanges (
   created_at timestamptz default now()
 );
 
--- Disable RLS for now (enable and configure later for multi-user)
-alter table employees disable row level security;
-alter table weeks disable row level security;
-alter table exchanges disable row level security;
+-- La sécurité RLS (Row Level Security) est configurée séparément :
+-- politiques lecture pour tous les comptes authentifiés,
+-- écriture réservée aux titulaires. Ne pas désactiver RLS.
 `.trim();
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
@@ -157,8 +159,6 @@ const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Aoû
 const CLOSING_SLOT = {Lundi:"19h30",Mardi:"19h30",Mercredi:"19h30",Jeudi:"19h30",Vendredi:"19h30",Samedi:"19h",Dimanche:"off"};
 const OPENING_SLOT = "7h45";
 const PAUSE_SLOTS  = ["12h","12h30","13h","13h30"];
-const UNLOCK_SECRET = 5;
-const UNLOCK_WINDOW = 3000;
 
 function slotToMin(s){const m=s.match(/(\d+)h(\d+)?/);return parseInt(m[1])*60+parseInt(m[2]||0);}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
@@ -300,6 +300,28 @@ function getWorkedInRange(weekData,day,empId,tf,tt){
 function getConflicts(weekData,day,aId,bId,tf,tt){
   const worked=getWorkedInRange(weekData,day,aId,tf,tt),dd=weekData?.[day]?.[bId]||{};
   return worked.filter(s=>dd[s]==="work"||dd[s]==="pause");
+}
+
+
+// Construit les jours (blocs travail + pauses) d'un salarié pour une semaine — partagé par les deux envois email
+function buildEmpWeekDays(week, empId){
+  const monday=new Date(week.monday);
+  return DAYS.map((day,di)=>{
+    const dd=week.data[day]?.[empId]||{};
+    const workH=Object.values(dd).filter(s=>s==="work").length*0.5;
+    const pauseH=Object.values(dd).filter(s=>s==="pause").length*0.5;
+    const blocks=[];let inB=false,bS=null,bT=null;
+    SLOTS.forEach((s,i)=>{const st=dd[s];
+      if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
+      else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}});
+    if(inB)blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+    const pauseBlocks=[];let inP=false,pS=null;
+    SLOTS.forEach((s,i)=>{const st=dd[s];
+      if(st==="pause"&&!inP){inP=true;pS=s;}
+      else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}});
+    if(inP)pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
+    return {day,date:formatDate(getDayDate(monday,di)),workH,pauseH,blocks,pauseBlocks,isOff:workH===0&&pauseH===0};
+  });
 }
 
 // ─── UI PRIMITIVES ────────────────────────────────────────────────────────────
@@ -632,27 +654,7 @@ function SendPlanningBtn({emp, week}) {
     const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
     const weekLabel = `${formatDate(monday, true)} → ${formatDate(sunday, true)} ${monday.getFullYear()}`;
 
-    const days = DAYS.map((day, di) => {
-      const dd = week.data[day]?.[emp.id] || {};
-      const workH = Object.values(dd).filter(s=>s==="work").length * 0.5;
-      const pauseH = Object.values(dd).filter(s=>s==="pause").length * 0.5;
-      const blocks = []; let inB=false, bS=null, bT=null;
-      SLOTS.forEach((s,i) => {
-        const st=dd[s];
-        if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
-        else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
-      });
-      if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
-      const pauseBlocks = []; let inP=false, pS=null;
-      SLOTS.forEach((s,i) => {
-        const st=dd[s];
-        if(st==="pause"&&!inP){inP=true;pS=s;}
-        else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
-      });
-      if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
-      return { day, date: formatDate(getDayDate(monday,di)), workH, pauseH, blocks, pauseBlocks, isOff: workH===0&&pauseH===0 };
-    });
-
+    const days = buildEmpWeekDays(week, emp.id);
     const totalH = days.reduce((a,d)=>a+d.workH,0);
     const weeksData = [{ weekLabel, days, totalH }];
 
@@ -1374,7 +1376,7 @@ function Exchanges({exchanges,setExchanges,weeks,setWeeks,employees}){
     if(!canSubmit)return;
     setSaving(true);
     const newEx={id:uid(),...form,fromName:employees.find(e=>e.id===form.from)?.firstName,toName:employees.find(e=>e.id===form.to)?.firstName,workedSlots:aWorked,status:"pending",createdAt:new Date().toLocaleDateString("fr-FR"),sector:selWeek.sector};
-    try{await db.upsertExchange(newEx);}catch(e){console.error(e);}
+    try{await db.upsertExchange(newEx);}catch(e){console.error(e);reportSyncError();}
     setExchanges(prev=>[newEx,...prev]);
     setShowForm(false);setForm({from:"",to:"",day:"Lundi",timeFrom:"9h",timeTo:"14h",weekId:"",note:""});
     setSaving(false);
@@ -1390,14 +1392,14 @@ function Exchanges({exchanges,setExchanges,weeks,setWeeks,employees}){
       slots.forEach(s=>{const sA=next.data[ex.day][ex.from]?.[s]||"off";const sB=next.data[ex.day][ex.to]?.[s]||"off";next.data[ex.day][ex.from][s]=sB;next.data[ex.day][ex.to][s]=sA;});
       return next;
     });
-    try{await db.upsertExchange(updatedEx);await Promise.all(updatedWeeks.filter(w=>w.id===ex.weekId).map(w=>db.upsertWeek(w)));}catch(e){console.error(e);}
+    try{await db.upsertExchange(updatedEx);await Promise.all(updatedWeeks.filter(w=>w.id===ex.weekId).map(w=>db.upsertWeek(w)));}catch(e){console.error(e);reportSyncError();}
     setExchanges(prev=>prev.map(e=>e.id===exId?updatedEx:e));
     setWeeks(updatedWeeks);
   }
 
   async function reject(exId){
     const updatedEx={...exchanges.find(e=>e.id===exId),status:"rejected"};
-    try{await db.upsertExchange(updatedEx);}catch(e){console.error(e);}
+    try{await db.upsertExchange(updatedEx);}catch(e){console.error(e);reportSyncError();}
     setExchanges(prev=>prev.map(e=>e.id===exId?updatedEx:e));
   }
 
@@ -1537,28 +1539,28 @@ function EmployeeManager({employees,setEmployees,weeks,setWeeks,sector}){
     setSaving(true);
     if(editId){
       const updated={...employees.find(e=>e.id===editId),...form,contract:Number(form.contract)};
-      try{await db.upsertEmployee(updated);}catch(e){console.error(e);}
+      try{await db.upsertEmployee(updated);}catch(e){console.error(e);reportSyncError();}
       setEmployees(prev=>prev.map(e=>e.id===editId?updated:e));
     }else{
       const ne={id:uid(),...form,contract:Number(form.contract),sector};
-      try{await db.upsertEmployee(ne);}catch(e){console.error(e);}
+      try{await db.upsertEmployee(ne);}catch(e){console.error(e);reportSyncError();}
       setEmployees(prev=>[...prev,ne]);
       const updatedWeeks=weeks.map(w=>{
         const next=JSON.parse(JSON.stringify(w));
         DAYS.forEach(day=>{next.data[day]={...next.data[day],[ne.id]:Object.fromEntries(SLOTS.map(s=>[s,"off"]))}});
         return next;
       });
-      try{await Promise.all(updatedWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);}
+      try{await Promise.all(updatedWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);reportSyncError();}
       setWeeks(updatedWeeks);
     }
     setSaving(false);setShowForm(false);
   }
 
   async function remove(id){
-    try{await db.deleteEmployee(id);}catch(e){console.error(e);}
+    try{await db.deleteEmployee(id);}catch(e){console.error(e);reportSyncError();}
     setEmployees(prev=>prev.filter(e=>e.id!==id));
     const updatedWeeks=weeks.map(w=>{const next=JSON.parse(JSON.stringify(w));DAYS.forEach(day=>{if(next.data[day]){const d={...next.data[day]};delete d[id];next.data[day]=d;}});return next;});
-    try{await Promise.all(updatedWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);}
+    try{await Promise.all(updatedWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);reportSyncError();}
     setWeeks(updatedWeeks);setConfirmDel(null);
   }
 
@@ -1660,29 +1662,7 @@ function SendCenter({ employees, weeks }) {
       const monday = new Date(week.monday);
       const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
       const weekLabel = `${formatDate(monday,true)} → ${formatDate(sunday,true)} ${monday.getFullYear()}`;
-      const days = DAYS.map((day,di) => {
-        const dd = week.data[day]?.[emp.id] || {};
-        const workH = Object.values(dd).filter(s=>s==="work").length * 0.5;
-        const pauseH = Object.values(dd).filter(s=>s==="pause").length * 0.5;
-        // Build work blocks
-        const blocks = []; let inB=false, bS=null, bT=null;
-        SLOTS.forEach((s,i) => {
-          const st=dd[s];
-          if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
-          else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
-        });
-        if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
-        // Find pause slots
-        const pauseBlocks = []; let inP=false, pS=null;
-        SLOTS.forEach((s,i) => {
-          const st=dd[s];
-          if(st==="pause"&&!inP){inP=true;pS=s;}
-          else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
-        });
-        if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
-        const dateStr = formatDate(getDayDate(monday,di));
-        return { day, date:dateStr, workH, pauseH, blocks, pauseBlocks, isOff: workH===0&&pauseH===0 };
-      });
+      const days = buildEmpWeekDays(week, emp.id);
       const totalH = days.reduce((a,d)=>a+d.workH,0);
       return { weekLabel, days, totalH };
     });
@@ -1851,12 +1831,70 @@ function SendCenter({ employees, weeks }) {
   );
 }
 
+
+// ─── REPLICATE PANEL ─────────────────────────────────────────────────────────
+function ReplicatePanel({weeks,onReplicate}){
+  const [open,setOpen]=useState(false);
+  const sorted=[...weeks].sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+  const [sourceId,setSourceId]=useState("");
+  const [count,setCount]=useState(1);
+  const [targetDate,setTargetDate]=useState("");
+  const [reps,setReps]=useState(1);
+  const [overwrite,setOverwrite]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [result,setResult]=useState(null);
+
+  async function run(){
+    if(!sourceId||!targetDate)return;
+    setBusy(true);setResult(null);
+    const r=await onReplicate(sourceId,Number(count),targetDate,Number(reps),overwrite);
+    setResult(r);setBusy(false);
+  }
+
+  return(
+    <Card style={{marginBottom:16,border:`1px solid ${C.pharma}44`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
+        <div><span style={{color:C.text,fontWeight:700,fontSize:14}}>⧉ Dupliquer des plannings</span><span style={{color:C.textMuted,fontSize:12,marginLeft:8}}>Copier 1 à 4 semaines vers d'autres dates</span></div>
+        <span style={{color:C.textMuted}}>{open?"▲":"▼"}</span>
+      </div>
+      {open&&(
+        <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+            <Sel label="Première semaine source" value={sourceId} onChange={setSourceId}>
+              <option value="">Choisir…</option>
+              {sorted.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+                return <option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;})}
+            </Sel>
+            <Sel label="Nombre de semaines à copier" value={count} onChange={setCount}>
+              {[1,2,3,4].map(n=><option key={n} value={n}>{n} semaine{n>1?"s":""}</option>)}
+            </Sel>
+            <div>
+              <label style={{color:C.textMuted,fontSize:12,display:"block",marginBottom:4}}>Coller à partir de la semaine du</label>
+              <input type="date" value={targetDate} onChange={e=>setTargetDate(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:8,background:C.bg,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",fontSize:13,boxSizing:"border-box"}}/>
+            </div>
+            <Sel label="Répéter le bloc" value={reps} onChange={setReps}>
+              {[1,2,3,4,5,6,8,10,12].map(n=><option key={n} value={n}>×{n}</option>)}
+            </Sel>
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+            <input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>
+            <span style={{color:C.textMuted,fontSize:13}}>Écraser les semaines existantes non verrouillées à la destination</span>
+          </label>
+          {result&&<div style={{padding:"8px 12px",borderRadius:8,background:result.ok?C.accentDim:C.dangerDim,border:`1px solid ${result.ok?C.accent:C.danger}44`}}><span style={{color:result.ok?C.accent:C.danger,fontSize:13,fontWeight:600}}>{result.msg}</span></div>}
+          <div><Btn onClick={run} disabled={!sourceId||!targetDate||busy}>{busy?"Duplication…":"⧉ Dupliquer"}</Btn></div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [setup,setSetup]=useState(false);
   const [loading,setLoading]=useState(true);
   const [syncing,setSyncing]=useState(false);
   const [syncError,setSyncError]=useState(false);
+  reportSyncError = () => setSyncError(true);
   // Auth
   const [session,setSession]=useState(null);   // Supabase session
   const [currentUser,setCurrentUser]=useState(null); // matched employee record
@@ -1870,10 +1908,6 @@ export default function App() {
   const [activeTab,setActiveTab]=useState("calendar");
   const [sector,setSector]=useState("pharmacie");
   const [selectedWeekId,setSelectedWeekId]=useState("");
-  const [showUnlockModal,setShowUnlockModal]=useState(false);
-  const [unlockInput,setUnlockInput]=useState("");
-  const [unlockError,setUnlockError]=useState(false);
-  const clickTimes=useRef([]);
 
   // ── CHECK SESSION AU DÉMARRAGE (le SDK lit son propre localStorage) ──
   useEffect(()=>{
@@ -1932,15 +1966,7 @@ export default function App() {
     try{
         // Load employees
         let [pEmps,paraE]=await Promise.all([db.getEmployees("pharmacie"),db.getEmployees("parapharmacie")]);
-        // If empty, seed with initial data
-        if(!pEmps||pEmps.length===0){
-          await Promise.all(INIT_PHARMA_EMPS.map(e=>db.upsertEmployee(e)));
-          pEmps=INIT_PHARMA_EMPS;
-        }
-        if(!paraE||paraE.length===0){
-          await Promise.all(INIT_PARA_EMPS.map(e=>db.upsertEmployee(e)));
-          paraE=INIT_PARA_EMPS;
-        }
+        pEmps=pEmps||[];paraE=paraE||[];
         setPharmaEmps(pEmps);setParaEmps(paraE);
 
         // Determine if manager or employee
@@ -1956,16 +1982,7 @@ export default function App() {
 
         // Load weeks
         let [pWeeks,prWeeks]=await Promise.all([db.getWeeks("pharmacie"),db.getWeeks("parapharmacie")]);
-        if(!pWeeks||pWeeks.length===0){
-          const generated=initWeeks(buildBaseTemplate(pEmps,"pharmacie"),"pharmacie");
-          await Promise.all(generated.map(w=>db.upsertWeek(w)));
-          pWeeks=generated;
-        }
-        if(!prWeeks||prWeeks.length===0){
-          const generated=initWeeks(buildBaseTemplate(paraE,"parapharmacie"),"parapharmacie");
-          await Promise.all(generated.map(w=>db.upsertWeek(w)));
-          prWeeks=generated;
-        }
+        pWeeks=pWeeks||[];prWeeks=prWeeks||[];
         setPharmaWeeks(pWeeks);setParaWeeks(prWeeks);
         setSelectedWeekId(pWeeks[0]?.id||"");
 
@@ -1977,11 +1994,6 @@ export default function App() {
       }catch(e){
         console.error("Load error:",e);
         setSyncError(true);
-        // Fallback to local data
-        setPharmaEmps(INIT_PHARMA_EMPS);setParaEmps(INIT_PARA_EMPS);
-        setPharmaWeeks(initWeeks(buildBaseTemplate(INIT_PHARMA_EMPS,"pharmacie"),"pharmacie"));
-        setParaWeeks(initWeeks(buildBaseTemplate(INIT_PARA_EMPS,"parapharmacie"),"parapharmacie"));
-        setSelectedWeekId(getMondayOf(new Date()).toISOString().slice(0,10));
       }
       setLoading(false);
     }
@@ -1999,28 +2011,6 @@ export default function App() {
   const setEmp    = sector==="pharmacie"?setPharmaEmps:setParaEmps;
   const selectedWeek=weeks.find(w=>w.id===selectedWeekId)||weeks[0];
 
-  function handleLogoClick(){
-    const now=Date.now();
-    clickTimes.current=[...clickTimes.current.filter(t=>now-t<UNLOCK_WINDOW),now];
-    if(clickTimes.current.length>=UNLOCK_SECRET){
-      clickTimes.current=[];
-      setUnlockInput("");setUnlockError(false);setShowUnlockModal(true);
-    }
-  }
-
-  function handleUnlockSubmit(){
-    if(unlockInput==="Kzqbtcx"){
-      const w=sector==="pharmacie"?pharmaWeeks:paraWeeks;
-      const sw=sector==="pharmacie"?setPharmaWeeks:setParaWeeks;
-      const target=w.find(wk=>wk.locked&&wk.id===selectedWeekId)||w.find(wk=>wk.locked);
-      if(target){
-        const updated={...target,locked:false,lockedAt:null};
-        sw(prev=>prev.map(wk=>wk.id===target.id?updated:wk));
-        saveWeek(updated);
-      }
-      setShowUnlockModal(false);setUnlockInput("");setUnlockError(false);
-    }else{setUnlockError(true);setUnlockInput("");}
-  }
 
   async function toggleSlot(weekId,day,empId,slot){
     const w=weeks.find(wk=>wk.id===weekId);if(!w||w.locked)return;
@@ -2031,6 +2021,42 @@ export default function App() {
     next.data[day][empId][slot]=cur==="off"?"work":cur==="work"?"pause":"off";
     setWeeks(prev=>prev.map(wk=>wk.id===weekId?next:wk));
     await saveWeek(next);
+  }
+
+  async function unlockWeek(weekId){
+    const w=weeks.find(wk=>wk.id===weekId);if(!w||!w.locked)return;
+    const updated={...w,locked:false,lockedAt:null};
+    setWeeks(prev=>prev.map(wk=>wk.id===weekId?updated:wk));
+    await saveWeek(updated);
+  }
+
+  async function replicateWeeks(sourceStartId,count,targetDateStr,repetitions,overwrite){
+    const sorted=[...weeks].sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+    const startIdx=sorted.findIndex(w=>w.id===sourceStartId);
+    if(startIdx<0) return {ok:false,msg:"Semaine source introuvable."};
+    const block=sorted.slice(startIdx,startIdx+count);
+    if(block.length<count) return {ok:false,msg:`Seulement ${block.length} semaine(s) disponible(s) à partir de la source.`};
+    const targetMonday=getMondayOf(new Date(targetDateStr+"T00:00:00"));
+    const newWeeks=[];let skipped=0;
+    for(let r=0;r<repetitions;r++){
+      for(let i=0;i<count;i++){
+        const m=new Date(targetMonday);m.setDate(m.getDate()+(r*count+i)*7);
+        const id=m.toISOString().slice(0,10);
+        const exists=weeks.find(w=>w.id===id);
+        if(exists&&(!overwrite||exists.locked)){skipped++;continue;}
+        newWeeks.push({id,monday:m.toISOString(),sector,data:JSON.parse(JSON.stringify(block[i].data)),locked:false,lockedAt:null});
+      }
+    }
+    if(newWeeks.length===0) return {ok:false,msg:`Aucune semaine créée (${skipped} destination(s) déjà occupée(s) ou verrouillée(s)).`};
+    try{
+      await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));
+    }catch(e){console.error(e);setSyncError(true);return {ok:false,msg:"Erreur d'enregistrement en base."};}
+    setWeeks(prev=>{
+      const map=Object.fromEntries(prev.map(w=>[w.id,w]));
+      newWeeks.forEach(w=>{map[w.id]=w;});
+      return Object.values(map).sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+    });
+    return {ok:true,msg:`✓ ${newWeeks.length} semaine(s) créée(s)${skipped?`, ${skipped} ignorée(s) (existante ou verrouillée)`:""}.`};
   }
 
   async function lockWeek(weekId){
@@ -2048,7 +2074,7 @@ export default function App() {
       return createWeekSchedule(m,buildBaseTemplate(employees,sector),sector);
     });
     setWeeks(prev=>[...prev,...newWeeks]);
-    try{await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);}
+    try{await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);reportSyncError();}
   }
 
   async function createWeekFromDate(mondayKey){
@@ -2058,7 +2084,7 @@ export default function App() {
     const newWeek=createWeekSchedule(monday,buildBaseTemplate(employees,sector),sector);
     setWeeks(prev=>[...prev,newWeek].sort((a,b)=>new Date(a.monday)-new Date(b.monday)));
     setSelectedWeekId(mondayKey);
-    try{await db.upsertWeek(newWeek);}catch(e){console.error(e);}
+    try{await db.upsertWeek(newWeek);}catch(e){console.error(e);reportSyncError();}
     setActiveTab("trames");
   }
 
@@ -2095,24 +2121,9 @@ export default function App() {
 
   return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Inter',system-ui,sans-serif",color:C.text}}>
-      {/* Unlock modal */}
-      {showUnlockModal&&(
-        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)"}} onClick={()=>{setShowUnlockModal(false);setUnlockError(false);setUnlockInput("");}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:300,display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>🔐</span><span style={{color:C.text,fontWeight:700,fontSize:16}}>Accès restreint</span></div>
-            <input type="password" value={unlockInput} onChange={e=>setUnlockInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleUnlockSubmit()} placeholder="Mot de passe" autoFocus style={{padding:"10px 14px",borderRadius:8,background:C.bg,border:`1px solid ${unlockError?C.danger:C.border}`,color:C.text,fontFamily:"inherit",fontSize:14,outline:"none"}}/>
-            {unlockError&&<span style={{color:C.danger,fontSize:12,fontWeight:600}}>Mot de passe incorrect.</span>}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={handleUnlockSubmit} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:C.accent,color:"#0F1923",fontFamily:"inherit",fontWeight:700,fontSize:14,cursor:"pointer"}}>Confirmer</button>
-              <button onClick={()=>{setShowUnlockModal(false);setUnlockError(false);setUnlockInput("");}} style={{padding:"9px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:13,cursor:"pointer"}}>Annuler</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Top bar */}
       <div style={{position:"sticky",top:0,zIndex:100,background:`${C.surface}EE`,backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:"0 18px",display:"flex",alignItems:"center",gap:14,height:54,flexWrap:"wrap"}}>
-        <div onClick={handleLogoClick} style={{display:"flex",alignItems:"center",gap:8,cursor:"default",userSelect:"none"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,userSelect:"none"}}>
           <div style={{width:28,height:28,borderRadius:7,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#0F1923",fontWeight:900}}>⊕</div>
           <span style={{fontSize:14,fontWeight:800,color:C.text,letterSpacing:"-0.02em"}}>Pharma<span style={{color:C.accent}}>Planning</span></span>
         </div>
@@ -2146,6 +2157,7 @@ export default function App() {
         {activeTab==="calendar"&&(
           <div>
             <div style={{marginBottom:14}}><h2 style={{color:C.text,margin:"0 0 3px",fontSize:18,fontWeight:700}}>Calendrier des plannings</h2><p style={{color:C.textMuted,fontSize:13,margin:0}}>Cliquez sur une semaine pour l'éditer. Validez pour verrouiller.</p></div>
+            <ReplicatePanel weeks={weeks} onReplicate={replicateWeeks}/>
             <CalendarView weeks={weeks} sector={sector} employees={employees} onSelectWeek={id=>{setSelectedWeekId(id);setActiveTab("trames");}} onLockWeek={lockWeek} onCreateWeek={createWeekFromDate}/>
           </div>
         )}
@@ -2169,7 +2181,11 @@ export default function App() {
             <Card>
               <TrameGrid weekData={selectedWeek.data} weekId={selectedWeek.id} monday={selectedWeek.monday} employees={employees} onToggleSlot={toggleSlot} locked={selectedWeek.locked} sector={sector}/>
             </Card>
-            {!selectedWeek.locked&&<div style={{marginTop:12,display:"flex",justifyContent:"flex-end"}}><Btn variant="success" onClick={()=>lockWeek(selectedWeek.id)}>✓ Valider et verrouiller</Btn></div>}
+            <div style={{marginTop:12,display:"flex",justifyContent:"flex-end"}}>
+              {!selectedWeek.locked
+                ?<Btn variant="success" onClick={()=>lockWeek(selectedWeek.id)}>✓ Valider et verrouiller</Btn>
+                :<Btn variant="ghost" onClick={()=>unlockWeek(selectedWeek.id)}>🔓 Déverrouiller cette semaine</Btn>}
+            </div>
           </div>
         )}
         {activeTab==="recap"&&(
