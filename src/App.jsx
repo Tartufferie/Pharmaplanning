@@ -1,4 +1,4 @@
-// PharmaPlanning v11 - duplication + sécurité audit
+// PharmaPlanning v12 - fix duree creneau 7h45 (0.25h)
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -287,7 +287,8 @@ function checkRules(weekData,employees,day){
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-function calcHours(dd){return Object.values(dd||{}).filter(s=>s==="work").length*0.5;}
+function slotDuration(slot){return slot==="7h45"?0.25:0.5;}
+function calcHours(dd){return Object.entries(dd||{}).reduce((a,[slot,st])=>a+(st==="work"?slotDuration(slot):0),0);}
 function calcWeekHours(weekData,empId){return DAYS.reduce((a,d)=>a+calcHours(weekData[d]?.[empId]||{}),0);}
 function getStatusBg(s){return s==="work"?"#00C89622":s==="pause"?"#F59E0B22":s==="repos"?"#1a203044":"transparent";}
 function getStatusBorder(s){return s==="work"?C.accent:s==="pause"?C.pause:s==="repos"?C.textDim:C.border;}
@@ -308,7 +309,7 @@ function buildEmpWeekDays(week, empId){
   const monday=new Date(week.monday);
   return DAYS.map((day,di)=>{
     const dd=week.data[day]?.[empId]||{};
-    const workH=Object.values(dd).filter(s=>s==="work").length*0.5;
+    const workH=calcHours(dd);
     const pauseH=Object.values(dd).filter(s=>s==="pause").length*0.5;
     const blocks=[];let inB=false,bS=null,bT=null;
     SLOTS.forEach((s,i)=>{const st=dd[s];
@@ -884,7 +885,7 @@ function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSign
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:10 }}>
                 {DAYS.map((day,di) => {
                   const dd = week.data[day]?.[employee.id] || {};
-                  const workH = Object.values(dd).filter(s=>s==="work").length*0.5;
+                  const workH = calcHours(dd);
                   const pauseH = Object.values(dd).filter(s=>s==="pause").length*0.5;
                   const isOff = workH===0 && pauseH===0;
                   const dateLabel = monday ? formatDate(getDayDate(monday,di)) : "";
@@ -1081,7 +1082,7 @@ function RecapTable({weeks,employees,sector}){
       if(day==="Dimanche") return;
       const dd=week.data[day]?.[emp.id]||{};
       // Hours: only "work" slots
-      workedH+=Object.values(dd).filter(s=>s==="work").length*0.5;
+      workedH+=calcHours(dd);
       // Opening: present at 7h45
       if(dd["7h45"]==="work") openings++;
       // Closing: present at last slot of the day
