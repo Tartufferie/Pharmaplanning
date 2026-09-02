@@ -1,10 +1,10 @@
-// PharmaPlanning v11 - duplication + sécurité audit
+// PharmaPlanning v12 - fix duree creneau 7h45 (0.25h)
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const SB_URL = "https://fqbitotkkmuglicyusoa.supabase.co";
-const SB_KEY = "sb_publishable_fi5Uzop0prakwjuehC_lBg_9u9IRZIl";
+const SB_KEY = "sb_publishable_dDcUP9NlIaifEFNlvx3MXg_aQdpYQsR";
 
 // Client unique. Le SDK gère : envoi du token de session sur chaque requête,
 // refresh automatique avant expiration, persistance dans localStorage.
@@ -156,8 +156,11 @@ const SLOTS = ["7h45","8h","8h30","9h","9h30","10h","10h30","11h","11h30","12h",
 const DAYS  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const DAYS_SHORT = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const CLOSING_SLOT = {Lundi:"19h30",Mardi:"19h30",Mercredi:"19h30",Jeudi:"19h30",Vendredi:"19h30",Samedi:"19h",Dimanche:"off"};
-const OPENING_SLOT = "7h45";
+// Dernier créneau TRAVAILLÉ de la journée. Un créneau couvre la demi-heure qui commence
+// à son étiquette : "18h30" = 18h30→19h. Fermeture samedi à 19h ⇒ dernier créneau = 18h30.
+const CLOSING_SLOT = {Lundi:"19h30",Mardi:"19h30",Mercredi:"19h30",Jeudi:"19h30",Vendredi:"19h30",Samedi:"18h30",Dimanche:"off"};
+const OPENING_SLOT = "7h45";        // ouverture physique : au moins 1 salarié, tout rôle confondu
+const PUBLIC_OPEN_SLOT = "8h";      // ouverture au public : présence pharmaceutique obligatoire
 const PAUSE_SLOTS  = ["12h","12h30","13h","13h30"];
 
 function slotToMin(s){const m=s.match(/(\d+)h(\d+)?/);return parseInt(m[1])*60+parseInt(m[2]||0);}
@@ -174,95 +177,39 @@ function formatDate(d,short=false){
   return`${String(dd.getDate()).padStart(2,"0")}/${String(dd.getMonth()+1).padStart(2,"0")}/${dd.getFullYear()}`;
 }
 function getDayDate(monday,dayIndex){const d=new Date(monday);d.setDate(d.getDate()+dayIndex);return d;}
-
-// ─── INITIAL DATA ─────────────────────────────────────────────────────────────
-const INIT_PHARMA_EMPS = [
-  {id:"wp1",       firstName:"Titulaire", lastName:"1",     role:"titulaire",   contract:35,email:"titulaire1@pharmacie.fr", sector:"pharmacie"},
-  {id:"wp2",       firstName:"Titulaire", lastName:"2",     role:"titulaire",   contract:35,email:"titulaire2@pharmacie.fr", sector:"pharmacie"},
-  {id:"johana",    firstName:"Johana",    lastName:"",      role:"pharmacien",  contract:35,email:"johana@pharmacie.fr",    sector:"pharmacie"},
-  {id:"seyfullah", firstName:"Seyfullah", lastName:"",      role:"pharmacien",  contract:35,email:"seyfullah@pharmacie.fr", sector:"pharmacie"},
-  {id:"navin",     firstName:"Navin",     lastName:"",      role:"pharmacien",  contract:30,email:"navin@pharmacie.fr",     sector:"pharmacie"},
-  {id:"mathpharma",firstName:"Mathieu",   lastName:"Ph.",   role:"pharmacien",  contract:14,email:"mathieu.ph@pharmacie.fr",sector:"pharmacie"},
-  {id:"evelyne",   firstName:"Évelyne",   lastName:"",      role:"preparateur", contract:35,email:"evelyne@pharmacie.fr",   sector:"pharmacie"},
-  {id:"suheda",    firstName:"Suheda",    lastName:"",      role:"preparateur", contract:35,email:"suheda@pharmacie.fr",    sector:"pharmacie"},
-  {id:"veronique", firstName:"Véronique", lastName:"",      role:"preparateur", contract:35,email:"veronique@pharmacie.fr", sector:"pharmacie"},
-  {id:"anita",     firstName:"Anita",     lastName:"",      role:"preparateur", contract:30,email:"anita@pharmacie.fr",     sector:"pharmacie"},
-  {id:"matthieu",  firstName:"Matthieu",  lastName:"",      role:"preparateur", contract:35,email:"matthieu@pharmacie.fr",  sector:"pharmacie"},
-  {id:"sydney",    firstName:"Sydney",    lastName:"",      role:"preparateur", contract:35,email:"sydney@pharmacie.fr",    sector:"pharmacie"},
-  {id:"melissa",   firstName:"Mélissa",   lastName:"",      role:"preparateur", contract:35,email:"melissa@pharmacie.fr",   sector:"pharmacie"},
-  {id:"stephanie", firstName:"Stéphanie", lastName:"",      role:"preparateur", contract:35,email:"stephanie@pharmacie.fr", sector:"pharmacie"},
-];
-const INIT_PARA_EMPS = [
-  {id:"para_lea",    firstName:"Léa",    lastName:"Martin", role:"preparateur",contract:35,email:"lea.martin@pharmacie.fr",    sector:"parapharmacie"},
-  {id:"para_camille",firstName:"Camille",lastName:"Dupont", role:"preparateur",contract:35,email:"camille.dupont@pharmacie.fr", sector:"parapharmacie"},
-  {id:"para_sarah",  firstName:"Sarah",  lastName:"Bernard",role:"preparateur",contract:28,email:"sarah.bernard@pharmacie.fr",  sector:"parapharmacie"},
-];
-
-function buildDaySlots(pattern){
-  if(pattern==="repos")return Object.fromEntries(SLOTS.map(s=>[s,"repos"]));
-  if(!pattern||pattern==="off")return Object.fromEntries(SLOTS.map(s=>[s,"off"]));
-  const ranges=pattern.split(",").map(r=>{const[a,b]=r.trim().split("-");return[slotToMin(a),slotToMin(b)];});
-  return Object.fromEntries(SLOTS.map(s=>{const t=slotToMin(s);return[s,ranges.some(([f,to])=>t>=f&&t<to)?"work":"off"];}));
+// Clés de semaine en date LOCALE. Ne jamais utiliser toISOString().slice(0,10) :
+// en France (UTC+1/+2), minuit local devient la veille en UTC → toutes les semaines reculent d'un jour.
+function toKey(d){
+  const dd=new Date(d);
+  return `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,"0")}-${String(dd.getDate()).padStart(2,"0")}`;
+}
+function fromKey(k){
+  const [y,m,d]=k.split("-").map(Number);
+  return new Date(y,m-1,d,12,0,0,0); // midi local : insensible au changement d'heure
 }
 
-function buildBaseTemplate(employees,sector){
-  if(sector==="pharmacie"){
-    const pats={
-      johana:     {L:"8h-12h,14h-20h",Ma:"9h-12h,14h-20h",Me:"off",J:"off",V:"8h-12h,14h-20h",S:"13h-19h30",D:"off"},
-      seyfullah:  {L:"off",Ma:"7h45-12h,13h30-20h",Me:"8h30-12h30,13h30-20h",J:"8h30-12h30,13h30-20h",V:"off",S:"8h-13h",D:"off"},
-      navin:      {L:"off",Ma:"9h-12h,13h-20h",Me:"8h-12h,13h-20h",J:"off",V:"off",S:"9h-12h30,13h-19h",D:"off"},
-      mathpharma: {L:"off",Ma:"off",Me:"15h30-20h",J:"14h-20h",V:"off",S:"8h30-12h30",D:"off"},
-      evelyne:    {L:"off",Ma:"9h-12h,13h30-20h",Me:"12h-20h",J:"9h-12h,13h-20h",V:"9h-12h30",S:"off",D:"off"},
-      suheda:     {L:"9h-12h,14h-20h",Ma:"8h30-12h30",Me:"8h-12h,13h-20h",J:"7h45-12h,14h-20h",V:"off",S:"off",D:"off"},
-      veronique:  {L:"9h-12h,13h-20h",Ma:"14h-19h30",Me:"9h-12h,13h-20h",J:"off",V:"8h-12h",S:"off",D:"off"},
-      anita:      {L:"9h-12h30",Ma:"8h-12h",Me:"9h-20h",J:"off",V:"7h45-12h",S:"9h-19h30",D:"off"},
-      matthieu:   {L:"7h45-12h",Ma:"off",Me:"9h-12h,13h-20h",J:"8h-12h,13h-20h",V:"14h-20h",S:"8h30-12h30",D:"off"},
-      sydney:     {L:"9h-12h30,13h-20h",Ma:"8h-12h30",Me:"7h45-12h,13h-20h",J:"off",V:"14h-20h",S:"12h-19h",D:"off"},
-      melissa:    {L:"8h30-12h30",Ma:"off",Me:"9h-12h30,13h-20h",J:"9h-12h,13h-20h",V:"12h30-20h",S:"7h45-12h",D:"off"},
-      stephanie:  {L:"repos",Ma:"repos",Me:"repos",J:"repos",V:"repos",S:"repos",D:"repos"},
-    };
-    const t={};
-    DAYS.forEach((day,di)=>{
-      const dk=["L","Ma","Me","J","V","S","D"][di];
-      t[day]={};
-      employees.forEach(emp=>{t[day][emp.id]=buildDaySlots(pats[emp.id]?.[dk]||"off");});
-    });
-    return t;
-  } else {
-    const pats={
-      para_lea:     {L:"9h-19h",Ma:"9h-19h",Me:"off",J:"9h-19h",V:"9h-19h",S:"9h-17h",D:"off"},
-      para_camille: {L:"10h-19h",Ma:"off",Me:"9h-19h",J:"10h-19h",V:"10h-19h",S:"9h-17h",D:"off"},
-      para_sarah:   {L:"off",Ma:"9h-17h",Me:"9h-17h",J:"off",V:"9h-17h",S:"off",D:"off"},
-    };
-    const t={};
-    DAYS.forEach((day,di)=>{
-      const dk=["L","Ma","Me","J","V","S","D"][di];
-      t[day]={};
-      employees.forEach(emp=>{t[day][emp.id]=buildDaySlots(pats[emp.id]?.[dk]||"off");});
-    });
-    return t;
-  }
+// ─── TEMPLATE DE SEMAINE ─────────────────────────────────────────────────────
+// Aucune donnée salarié en dur : l'équipe se saisit dans l'onglet « Équipe ».
+// Une nouvelle semaine part vierge ; utiliser la duplication pour repartir d'une trame existante.
+function buildEmptyTemplate(employees){
+  const t={};
+  DAYS.forEach(day=>{
+    t[day]={};
+    (employees||[]).forEach(emp=>{t[day][emp.id]=Object.fromEntries(SLOTS.map(s=>[s,"off"]));});
+  });
+  return t;
 }
 
 function createWeekSchedule(monday,baseTemplate,sector){
-  const m=new Date(monday);
+  const m=new Date(monday);m.setHours(12,0,0,0);
   return {
-    id:m.toISOString().slice(0,10),
+    id:toKey(m),
     monday:m.toISOString(),
     sector,
     data:JSON.parse(JSON.stringify(baseTemplate)),
     locked:false,
     lockedAt:null,
   };
-}
-
-function initWeeks(baseTemplate,sector){
-  const today=new Date();
-  const thisMonday=getMondayOf(today);
-  return Array.from({length:4},(_,i)=>{
-    const m=new Date(thisMonday);m.setDate(m.getDate()+i*7);
-    return createWeekSchedule(m,baseTemplate,sector);
-  });
 }
 
 // ─── RULE ENGINE ─────────────────────────────────────────────────────────────
@@ -273,9 +220,10 @@ function checkRules(weekData,employees,day){
   const pharmaEmps=employees.filter(e=>e.role==="pharmacien"||e.role==="titulaire");
   function staffAt(slot){return employees.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
   function pharmaAt(slot){return pharmaEmps.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
-  const oS=staffAt(OPENING_SLOT),oP=pharmaAt(OPENING_SLOT);
-  if(oS.length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : personne à 7h45 !"});
-  else if(oP.length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : aucun pharmacien à 7h45 !"});
+  // 7h45 : ouverture physique, un salarié suffit (aucune exigence de rôle)
+  if(staffAt(OPENING_SLOT).length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : personne à 7h45 !"});
+  // 8h : ouverture au public, présence pharmaceutique obligatoire
+  if(pharmaAt(PUBLIC_OPEN_SLOT).length<1)alerts.push({type:"danger",slot:PUBLIC_OPEN_SLOT,rule:"Ouverture au public : aucun pharmacien à 8h !"});
   const cSlot=CLOSING_SLOT[day];
   if(cSlot&&cSlot!=="off"){
     const cS=staffAt(cSlot),cP=pharmaAt(cSlot);
@@ -287,7 +235,8 @@ function checkRules(weekData,employees,day){
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-function calcHours(dd){return Object.values(dd||{}).filter(s=>s==="work").length*0.5;}
+function slotDuration(slot){return slot==="7h45"?0.25:0.5;}
+function calcHours(dd){return Object.entries(dd||{}).reduce((a,[slot,st])=>a+(st==="work"?slotDuration(slot):0),0);}
 function calcWeekHours(weekData,empId){return DAYS.reduce((a,d)=>a+calcHours(weekData[d]?.[empId]||{}),0);}
 function getStatusBg(s){return s==="work"?"#00C89622":s==="pause"?"#F59E0B22":s==="repos"?"#1a203044":"transparent";}
 function getStatusBorder(s){return s==="work"?C.accent:s==="pause"?C.pause:s==="repos"?C.textDim:C.border;}
@@ -308,7 +257,7 @@ function buildEmpWeekDays(week, empId){
   const monday=new Date(week.monday);
   return DAYS.map((day,di)=>{
     const dd=week.data[day]?.[empId]||{};
-    const workH=Object.values(dd).filter(s=>s==="work").length*0.5;
+    const workH=calcHours(dd);
     const pauseH=Object.values(dd).filter(s=>s==="pause").length*0.5;
     const blocks=[];let inB=false,bS=null,bT=null;
     SLOTS.forEach((s,i)=>{const st=dd[s];
@@ -405,7 +354,8 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
   const alertSlots=new Set(alerts.map(a=>a.slot));
   const coverage=useMemo(()=>Object.fromEntries(SLOTS.map(slot=>{
     const staff=employees.filter(e=>{const s=weekData[selectedDay]?.[e.id]?.[slot];return s==="work";});
-    return[slot,{total:staff.length,pharma:staff.filter(e=>e.role==="pharmacien").length}];
+    // Un titulaire est un pharmacien : même comptage que checkRules.
+    return[slot,{total:staff.length,pharma:staff.filter(e=>e.role==="pharmacien"||e.role==="titulaire").length}];
   })),[weekData,selectedDay,employees]);
   const dayTabs=DAYS.map((day,i)=>({day,date:getDayDate(mondayDate,i),label:`${DAYS_SHORT[i]} ${getDayDate(mondayDate,i).getDate()}`}));
 
@@ -446,8 +396,9 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
               {SLOTS.map(slot=>{
                 const{total,pharma}=coverage[slot]||{total:0,pharma:0};
                 const minR=sector==="parapharmacie"?1:PAUSE_SLOTS.includes(slot)?3:1;
-                const isClose=slot===closeSlot,isOpen=slot===OPENING_SLOT;
-                const bad=total<minR||(isClose&&(total<3||pharma<1))||(isOpen&&pharma<1);
+                const isClose=slot===closeSlot,isOpen=slot===OPENING_SLOT,isPublicOpen=slot===PUBLIC_OPEN_SLOT;
+                // 7h45 : 1 salarié suffit. 8h : pharmacien obligatoire (ouverture au public).
+                const bad=total<minR||(isClose&&(total<3||pharma<1))||(isOpen&&total<1)||(sector!=="parapharmacie"&&isPublicOpen&&pharma<1);
                 return <div key={slot} title={`${slot}: ${total} pers.`} style={{flex:1,minWidth:0,height:20,margin:"0 1px",borderRadius:3,background:bad?C.dangerDim:C.accentDim,border:`1px solid ${bad?C.danger:C.accent}44`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,fontWeight:700,color:bad?C.danger:C.accent}}>{total||""}</span></div>;
               })}
             </div>
@@ -516,8 +467,8 @@ function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek,onCreateWe
   while(rows.length>4 && rows[rows.length-1].every(d=>d.getMonth()!==viewMonth)) rows.pop();
 
   function getMondayKey(d){
-    const m=new Date(d);const dw=m.getDay();m.setDate(m.getDate()-(dw===0?6:dw-1));m.setHours(0,0,0,0);
-    return m.toISOString().slice(0,10);
+    const m=new Date(d);const dw=m.getDay();m.setDate(m.getDate()-(dw===0?6:dw-1));
+    return toKey(m);
   }
 
   const weekMap=Object.fromEntries(weeks.map(w=>[w.id,w]));
@@ -884,7 +835,7 @@ function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSign
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:10 }}>
                 {DAYS.map((day,di) => {
                   const dd = week.data[day]?.[employee.id] || {};
-                  const workH = Object.values(dd).filter(s=>s==="work").length*0.5;
+                  const workH = calcHours(dd);
                   const pauseH = Object.values(dd).filter(s=>s==="pause").length*0.5;
                   const isOff = workH===0 && pauseH===0;
                   const dateLabel = monday ? formatDate(getDayDate(monday,di)) : "";
@@ -1081,7 +1032,7 @@ function RecapTable({weeks,employees,sector}){
       if(day==="Dimanche") return;
       const dd=week.data[day]?.[emp.id]||{};
       // Hours: only "work" slots
-      workedH+=Object.values(dd).filter(s=>s==="work").length*0.5;
+      workedH+=calcHours(dd);
       // Opening: present at 7h45
       if(dd["7h45"]==="work") openings++;
       // Closing: present at last slot of the day
@@ -1285,7 +1236,7 @@ function RecapTable({weeks,employees,sector}){
       {/* Legend */}
       <div style={{display:"flex",gap:20,flexWrap:"wrap",padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Ouverture = présent à 7h45</span></div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 19h sam)</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 18h30 sam)</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.warning,fontWeight:700,fontSize:12}}>+xh</span><span style={{color:C.textMuted,fontSize:12}}>= heures supp</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.danger,fontWeight:700,fontSize:12}}>-xh</span><span style={{color:C.textMuted,fontSize:12}}>= déficit</span></div>
       </div>
@@ -2040,8 +1991,8 @@ export default function App() {
     const newWeeks=[];let skipped=0;
     for(let r=0;r<repetitions;r++){
       for(let i=0;i<count;i++){
-        const m=new Date(targetMonday);m.setDate(m.getDate()+(r*count+i)*7);
-        const id=m.toISOString().slice(0,10);
+        const m=new Date(targetMonday);m.setDate(m.getDate()+(r*count+i)*7);m.setHours(12,0,0,0);
+        const id=toKey(m);
         const exists=weeks.find(w=>w.id===id);
         if(exists&&(!overwrite||exists.locked)){skipped++;continue;}
         newWeeks.push({id,monday:m.toISOString(),sector,data:JSON.parse(JSON.stringify(block[i].data)),locked:false,lockedAt:null});
@@ -2071,7 +2022,7 @@ export default function App() {
     const lastMonday=new Date(last.monday);
     const newWeeks=Array.from({length:4},(_,i)=>{
       const m=new Date(lastMonday);m.setDate(m.getDate()+(i+1)*7);
-      return createWeekSchedule(m,buildBaseTemplate(employees,sector),sector);
+      return createWeekSchedule(m,buildEmptyTemplate(employees),sector);
     });
     setWeeks(prev=>[...prev,...newWeeks]);
     try{await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));}catch(e){console.error(e);reportSyncError();}
@@ -2080,8 +2031,8 @@ export default function App() {
   async function createWeekFromDate(mondayKey){
     // Check not already exists
     if(weeks.find(w=>w.id===mondayKey)) return;
-    const monday=new Date(mondayKey+"T00:00:00Z");
-    const newWeek=createWeekSchedule(monday,buildBaseTemplate(employees,sector),sector);
+    const monday=fromKey(mondayKey);
+    const newWeek=createWeekSchedule(monday,buildEmptyTemplate(employees),sector);
     setWeeks(prev=>[...prev,newWeek].sort((a,b)=>new Date(a.monday)-new Date(b.monday)));
     setSelectedWeekId(mondayKey);
     try{await db.upsertWeek(newWeek);}catch(e){console.error(e);reportSyncError();}
