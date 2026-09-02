@@ -156,8 +156,11 @@ const SLOTS = ["7h45","8h","8h30","9h","9h30","10h","10h30","11h","11h30","12h",
 const DAYS  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const DAYS_SHORT = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const CLOSING_SLOT = {Lundi:"19h30",Mardi:"19h30",Mercredi:"19h30",Jeudi:"19h30",Vendredi:"19h30",Samedi:"19h",Dimanche:"off"};
-const OPENING_SLOT = "7h45";
+// Dernier créneau TRAVAILLÉ de la journée. Un créneau couvre la demi-heure qui commence
+// à son étiquette : "18h30" = 18h30→19h. Fermeture samedi à 19h ⇒ dernier créneau = 18h30.
+const CLOSING_SLOT = {Lundi:"19h30",Mardi:"19h30",Mercredi:"19h30",Jeudi:"19h30",Vendredi:"19h30",Samedi:"18h30",Dimanche:"off"};
+const OPENING_SLOT = "7h45";        // ouverture physique : au moins 1 salarié, tout rôle confondu
+const PUBLIC_OPEN_SLOT = "8h";      // ouverture au public : présence pharmaceutique obligatoire
 const PAUSE_SLOTS  = ["12h","12h30","13h","13h30"];
 
 function slotToMin(s){const m=s.match(/(\d+)h(\d+)?/);return parseInt(m[1])*60+parseInt(m[2]||0);}
@@ -217,9 +220,10 @@ function checkRules(weekData,employees,day){
   const pharmaEmps=employees.filter(e=>e.role==="pharmacien"||e.role==="titulaire");
   function staffAt(slot){return employees.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
   function pharmaAt(slot){return pharmaEmps.filter(e=>{const s=dayData[e.id]?.[slot];return s==="work"||s==="pause";});}
-  const oS=staffAt(OPENING_SLOT),oP=pharmaAt(OPENING_SLOT);
-  if(oS.length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : personne à 7h45 !"});
-  else if(oP.length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : aucun pharmacien à 7h45 !"});
+  // 7h45 : ouverture physique, un salarié suffit (aucune exigence de rôle)
+  if(staffAt(OPENING_SLOT).length<1)alerts.push({type:"danger",slot:OPENING_SLOT,rule:"Ouverture : personne à 7h45 !"});
+  // 8h : ouverture au public, présence pharmaceutique obligatoire
+  if(pharmaAt(PUBLIC_OPEN_SLOT).length<1)alerts.push({type:"danger",slot:PUBLIC_OPEN_SLOT,rule:"Ouverture au public : aucun pharmacien à 8h !"});
   const cSlot=CLOSING_SLOT[day];
   if(cSlot&&cSlot!=="off"){
     const cS=staffAt(cSlot),cP=pharmaAt(cSlot);
@@ -350,7 +354,8 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
   const alertSlots=new Set(alerts.map(a=>a.slot));
   const coverage=useMemo(()=>Object.fromEntries(SLOTS.map(slot=>{
     const staff=employees.filter(e=>{const s=weekData[selectedDay]?.[e.id]?.[slot];return s==="work";});
-    return[slot,{total:staff.length,pharma:staff.filter(e=>e.role==="pharmacien").length}];
+    // Un titulaire est un pharmacien : même comptage que checkRules.
+    return[slot,{total:staff.length,pharma:staff.filter(e=>e.role==="pharmacien"||e.role==="titulaire").length}];
   })),[weekData,selectedDay,employees]);
   const dayTabs=DAYS.map((day,i)=>({day,date:getDayDate(mondayDate,i),label:`${DAYS_SHORT[i]} ${getDayDate(mondayDate,i).getDate()}`}));
 
@@ -391,8 +396,9 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
               {SLOTS.map(slot=>{
                 const{total,pharma}=coverage[slot]||{total:0,pharma:0};
                 const minR=sector==="parapharmacie"?1:PAUSE_SLOTS.includes(slot)?3:1;
-                const isClose=slot===closeSlot,isOpen=slot===OPENING_SLOT;
-                const bad=total<minR||(isClose&&(total<3||pharma<1))||(isOpen&&pharma<1);
+                const isClose=slot===closeSlot,isOpen=slot===OPENING_SLOT,isPublicOpen=slot===PUBLIC_OPEN_SLOT;
+                // 7h45 : 1 salarié suffit. 8h : pharmacien obligatoire (ouverture au public).
+                const bad=total<minR||(isClose&&(total<3||pharma<1))||(isOpen&&total<1)||(sector!=="parapharmacie"&&isPublicOpen&&pharma<1);
                 return <div key={slot} title={`${slot}: ${total} pers.`} style={{flex:1,minWidth:0,height:20,margin:"0 1px",borderRadius:3,background:bad?C.dangerDim:C.accentDim,border:`1px solid ${bad?C.danger:C.accent}44`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:9,fontWeight:700,color:bad?C.danger:C.accent}}>{total||""}</span></div>;
               })}
             </div>
@@ -1230,7 +1236,7 @@ function RecapTable({weeks,employees,sector}){
       {/* Legend */}
       <div style={{display:"flex",gap:20,flexWrap:"wrap",padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Ouverture = présent à 7h45</span></div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 19h sam)</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 18h30 sam)</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.warning,fontWeight:700,fontSize:12}}>+xh</span><span style={{color:C.textMuted,fontSize:12}}>= heures supp</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.danger,fontWeight:700,fontSize:12}}>-xh</span><span style={{color:C.textMuted,fontSize:12}}>= déficit</span></div>
       </div>
