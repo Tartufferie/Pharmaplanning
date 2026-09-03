@@ -236,6 +236,10 @@ function checkRules(weekData,employees,day){
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function slotDuration(slot){return slot==="7h45"?0.25:0.5;}
+// Un créneau couvre la demi-heure qui COMMENCE à son étiquette ("18h30" = 18h30→19h ;
+// "7h45" = 7h45→8h, soit 15 min). L'heure de fin d'un bloc est donc l'étiquette du
+// créneau suivant — et 20h après le dernier créneau (19h30).
+function slotEnd(slot){const i=SLOTS.indexOf(slot);return i>=0&&i<SLOTS.length-1?SLOTS[i+1]:"20h";}
 function calcHours(dd){return Object.entries(dd||{}).reduce((a,[slot,st])=>a+(st==="work"?slotDuration(slot):0),0);}
 function calcWeekHours(weekData,empId){return DAYS.reduce((a,d)=>a+calcHours(weekData[d]?.[empId]||{}),0);}
 function getStatusBg(s){return s==="work"?"#00C89622":s==="pause"?"#F59E0B22":s==="repos"?"#1a203044":"transparent";}
@@ -262,13 +266,13 @@ function buildEmpWeekDays(week, empId){
     const blocks=[];let inB=false,bS=null,bT=null;
     SLOTS.forEach((s,i)=>{const st=dd[s];
       if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
-      else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}});
-    if(inB)blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+      else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:slotEnd(SLOTS[i-1]),type:bT});inB=false;}});
+    if(inB)blocks.push({from:bS,to:slotEnd(SLOTS[SLOTS.length-1]),type:bT});
     const pauseBlocks=[];let inP=false,pS=null;
     SLOTS.forEach((s,i)=>{const st=dd[s];
       if(st==="pause"&&!inP){inP=true;pS=s;}
-      else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}});
-    if(inP)pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
+      else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:slotEnd(SLOTS[i-1])});inP=false;}});
+    if(inP)pauseBlocks.push({from:pS,to:slotEnd(SLOTS[SLOTS.length-1])});
     return {day,date:formatDate(getDayDate(monday,di)),workH,pauseH,blocks,pauseBlocks,isOff:workH===0&&pauseH===0};
   });
 }
@@ -845,18 +849,18 @@ function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSign
                   SLOTS.forEach((s,i)=>{
                     const st=dd[s];
                     if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}
-                    else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}
+                    else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:slotEnd(SLOTS[i-1]),type:bT});inB=false;}
                   });
-                  if(inB) blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+                  if(inB) blocks.push({from:bS,to:slotEnd(SLOTS[SLOTS.length-1]),type:bT});
 
                   // Pause blocks
                   const pauseBlocks=[]; let inP=false,pS=null;
                   SLOTS.forEach((s,i)=>{
                     const st=dd[s];
                     if(st==="pause"&&!inP){inP=true;pS=s;}
-                    else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:SLOTS[i-1]});inP=false;}
+                    else if(st!=="pause"&&inP){pauseBlocks.push({from:pS,to:slotEnd(SLOTS[i-1])});inP=false;}
                   });
-                  if(inP) pauseBlocks.push({from:pS,to:SLOTS[SLOTS.length-1]});
+                  if(inP) pauseBlocks.push({from:pS,to:slotEnd(SLOTS[SLOTS.length-1])});
 
                   return (
                     <Card key={day} style={{ borderColor:isOff?C.border:`${C.accent}33`, padding:14 }}>
@@ -1286,8 +1290,8 @@ function IndividualPlanning({weeks,employees}){
           const dd=week.data[day]?.[emp.id]||{};const h=calcHours(dd);const isOff=h===0;
           const dateLabel=formatDate(getDayDate(monday,di));
           const blocks=[];let inB=false,bS=null,bT=null;
-          SLOTS.forEach((s,i)=>{const st=dd[s];if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:SLOTS[i-1],type:bT});inB=false;}});
-          if(inB)blocks.push({from:bS,to:SLOTS[SLOTS.length-1],type:bT});
+          SLOTS.forEach((s,i)=>{const st=dd[s];if((st==="work"||st==="pause")&&!inB){inB=true;bS=s;bT=st;}else if(st!=="work"&&st!=="pause"&&inB){blocks.push({from:bS,to:slotEnd(SLOTS[i-1]),type:bT});inB=false;}});
+          if(inB)blocks.push({from:bS,to:slotEnd(SLOTS[SLOTS.length-1]),type:bT});
           return(
             <Card key={day} style={{borderColor:isOff?C.border:`${C.accent}33`,padding:13}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
