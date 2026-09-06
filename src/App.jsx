@@ -1033,31 +1033,43 @@ function RecapTable({weeks,employees,sector}){
   const [view,setView]=useState("week"); // "week" | "month"
   const week=weeks.find(w=>w.id===selWeekId)||weeks[0];
 
-  // Monthly stats: aggregate all weeks for each employee
+  // Vue mensuelle : un vrai mois calendaire, pas le cumul de toutes les semaines chargées.
+  // Une semaine est rattachée au mois où tombe son lundi.
+  const today=new Date();
+  const [monthYear,setMonthYear]=useState(today.getFullYear());
+  const [monthMonth,setMonthMonth]=useState(today.getMonth());
+  const monthWeeks=useMemo(()=>weeks.filter(w=>{
+    const m=new Date(w.monday);
+    return m.getFullYear()===monthYear&&m.getMonth()===monthMonth;
+  }).sort((a,b)=>new Date(a.monday)-new Date(b.monday)),[weeks,monthYear,monthMonth]);
+  function prevMonth(){if(monthMonth===0){setMonthMonth(11);setMonthYear(y=>y-1);}else setMonthMonth(m=>m-1);}
+  function nextMonth(){if(monthMonth===11){setMonthMonth(0);setMonthYear(y=>y+1);}else setMonthMonth(m=>m+1);}
+
+  // Monthly stats: aggregate only the weeks belonging to the selected calendar month
   const monthlyStats=useMemo(()=>{
     return employees.map(emp=>{
-      const totalContract=emp.contract*weeks.length;
-      const totalWorked=weeks.reduce((acc,w)=>acc+calcWeekHours(w.data,emp.id),0);
+      const totalContract=emp.contract*monthWeeks.length;
+      const totalWorked=monthWeeks.reduce((acc,w)=>acc+calcWeekHours(w.data,emp.id),0);
       const diff=Math.round((totalWorked-totalContract)*100)/100;
-      const openings=weeks.reduce((acc,w)=>{
+      const openings=monthWeeks.reduce((acc,w)=>{
         return acc+DAYS.filter(day=>{
           if(day==="Dimanche")return false;
           return w.data[day]?.[emp.id]?.["7h45"]==="work";
         }).length;
       },0);
-      const closings=weeks.reduce((acc,w)=>{
+      const closings=monthWeeks.reduce((acc,w)=>{
         return acc+DAYS.filter(day=>{
           if(day==="Dimanche")return false;
           const cs=CLOSING_SLOT[day];
           return cs&&cs!=="off"&&w.data[day]?.[emp.id]?.[cs]==="work";
         }).length;
       },0);
-      const conges=weeks.reduce((acc,w)=>{
+      const conges=monthWeeks.reduce((acc,w)=>{
         return acc+DAYS.filter(day=>day!=="Dimanche"&&w.data[day]?.[emp.id]?._status==="conges").length;
       },0);
       return {...emp,workedH:totalWorked,contract:totalContract,diff,openings,closings,conges,baseContract:emp.contract};
     });
-  },[weeks,employees]);
+  },[monthWeeks,employees]);
 
   if(!week) return <Card><p style={{color:C.textMuted}}>Aucune semaine disponible.</p></Card>;
 
@@ -1137,14 +1149,27 @@ function RecapTable({weeks,employees,sector}){
             <button onClick={()=>{const idx=weeks.findIndex(w=>w.id===selWeekId);if(idx<weeks.length-1)setSelWeekId(weeks[idx+1].id);}} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>›</button>
           </div>
         </>}
-        {view==="month"&&<span style={{color:C.textMuted,fontSize:13}}>Total sur {weeks.length} semaine{weeks.length>1?"s":""} chargées</span>}
+        {view==="month"&&(
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={prevMonth} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>‹</button>
+            <span style={{color:C.text,fontWeight:700,fontSize:13,minWidth:120,textAlign:"center"}}>{MONTHS[monthMonth]} {monthYear}</span>
+            <button onClick={nextMonth} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>›</button>
+            <Btn size="sm" variant="ghost" onClick={()=>{setMonthYear(today.getFullYear());setMonthMonth(today.getMonth());}}>Ce mois-ci</Btn>
+          </div>
+        )}
       </div>
 
       {/* Table */}
       {view==="month"&&(
-        <div style={{padding:"10px 14px",background:C.accentDim,borderRadius:8,border:`1px solid ${C.accent}33`,marginBottom:8}}>
-          <span style={{color:C.accent,fontSize:12}}>📅 Vue mensuelle — cumul de toutes les semaines chargées dans le calendrier. Contrat = {weeks.length} × heures hebdo.</span>
-        </div>
+        monthWeeks.length>0?(
+          <div style={{padding:"10px 14px",background:C.accentDim,borderRadius:8,border:`1px solid ${C.accent}33`,marginBottom:8}}>
+            <span style={{color:C.accent,fontSize:12}}>📅 {MONTHS[monthMonth]} {monthYear} — {monthWeeks.length} semaine{monthWeeks.length>1?"s":""} rattachée{monthWeeks.length>1?"s":""} à ce mois (semaine comptée dans le mois où tombe son lundi). Contrat = {monthWeeks.length} × heures hebdo.</span>
+          </div>
+        ):(
+          <div style={{padding:"10px 14px",background:C.warningDim,borderRadius:8,border:`1px solid ${C.warning}33`,marginBottom:8}}>
+            <span style={{color:C.warning,fontSize:12}}>⚠ Aucune semaine chargée pour {MONTHS[monthMonth]} {monthYear}.</span>
+          </div>
+        )
       )}
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
