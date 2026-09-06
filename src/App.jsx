@@ -85,6 +85,23 @@ const db = {
     if (error) throw new Error(error.message);
     return data;
   },
+
+  // Trame témoin (base de rotation à 4 semaines) — une par secteur
+  async getTemplate(sector) {
+    const { data, error } = await supabase
+      .from("templates").select("*")
+      .eq("sector", sector).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  async saveTemplate(sector, weeksData, label) {
+    const { data, error } = await supabase
+      .from("templates")
+      .upsert({ sector, weeks: weeksData, label, updated_at: new Date().toISOString() })
+      .select();
+    if (error) throw new Error(error.message);
+    return data;
+  },
 };
 
 // Remontée d'erreur globale vers le SyncBadge (réassignée par App au montage)
@@ -131,6 +148,13 @@ create table if not exists exchanges (
   sector text,
   "createdAt" text,
   created_at timestamptz default now()
+);
+
+create table if not exists templates (
+  sector text primary key,
+  label text,
+  weeks jsonb,
+  updated_at timestamptz default now()
 );
 
 -- La sécurité RLS (Row Level Security) est configurée séparément :
@@ -1788,6 +1812,81 @@ function SendCenter({ employees, weeks }) {
 
 
 // ─── REPLICATE PANEL ─────────────────────────────────────────────────────────
+function TrameTemoinPanel({weeks,template,onSave,onApply}){
+  const [open,setOpen]=useState(false);
+  const sorted=[...weeks].sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+  const [sourceId,setSourceId]=useState("");
+  const [targetDate,setTargetDate]=useState("");
+  const [cycles,setCycles]=useState(1);
+  const [overwrite,setOverwrite]=useState(false);
+  const [busySave,setBusySave]=useState(false);
+  const [busyApply,setBusyApply]=useState(false);
+  const [resultSave,setResultSave]=useState(null);
+  const [resultApply,setResultApply]=useState(null);
+
+  async function runSave(){
+    if(!sourceId)return;
+    setBusySave(true);setResultSave(null);
+    const r=await onSave(sourceId);
+    setResultSave(r);setBusySave(false);
+  }
+  async function runApply(){
+    if(!targetDate)return;
+    setBusyApply(true);setResultApply(null);
+    const r=await onApply(targetDate,Number(cycles),overwrite);
+    setResultApply(r);setBusyApply(false);
+  }
+
+  return(
+    <Card style={{marginBottom:16,border:`1px solid ${C.titulaire}44`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",flexWrap:"wrap",gap:6}} onClick={()=>setOpen(o=>!o)}>
+        <div>
+          <span style={{color:C.text,fontWeight:700,fontSize:14}}>◆ Trame témoin</span>
+          <span style={{color:C.textMuted,fontSize:12,marginLeft:8}}>{template?`Enregistrée — source : ${template.label}`:"Aucune trame enregistrée pour ce secteur"}</span>
+        </div>
+        <span style={{color:C.textMuted}}>{open?"▲":"▼"}</span>
+      </div>
+      {open&&(
+        <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:18}}>
+          <div>
+            <div style={{color:C.textDim,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>1 · Enregistrer la base (4 semaines)</div>
+            <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:220}}>
+                <Sel label="Semaine 1 de la trame" value={sourceId} onChange={setSourceId}>
+                  <option value="">Choisir…</option>
+                  {sorted.map(w=>{const m=new Date(w.monday),s=new Date(m);s.setDate(s.getDate()+6);
+                    return <option key={w.id} value={w.id}>{formatDate(m,true)} → {formatDate(s,true)} {m.getFullYear()}{w.locked?" 🔒":""}</option>;})}
+                </Sel>
+              </div>
+              <Btn onClick={runSave} disabled={!sourceId||busySave} variant="purple">{busySave?"Enregistrement…":"💾 Enregistrer comme trame témoin"}</Btn>
+            </div>
+            <p style={{color:C.textDim,fontSize:12,margin:"8px 0 0"}}>Capture cette semaine et les 3 suivantes dans le calendrier comme base de rotation (semaine 1 à 4).</p>
+            {resultSave&&<div style={{marginTop:8,padding:"8px 12px",borderRadius:8,background:resultSave.ok?C.accentDim:C.dangerDim,border:`1px solid ${resultSave.ok?C.accent:C.danger}44`}}><span style={{color:resultSave.ok?C.accent:C.danger,fontSize:13,fontWeight:600}}>{resultSave.msg}</span></div>}
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+            <div style={{color:C.textDim,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>2 · Appliquer la trame témoin</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+              <div>
+                <label style={{color:C.textMuted,fontSize:12,display:"block",marginBottom:4}}>Coller à partir de la semaine du</label>
+                <input type="date" value={targetDate} onChange={e=>setTargetDate(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:8,background:C.bg,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+              <Sel label="Répéter le cycle de 4 semaines" value={cycles} onChange={setCycles}>
+                {[1,2,3,4,6,8,10,12,13].map(n=><option key={n} value={n}>×{n} ({n*4} semaines)</option>)}
+              </Sel>
+            </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginTop:10}}>
+              <input type="checkbox" checked={overwrite} onChange={e=>setOverwrite(e.target.checked)}/>
+              <span style={{color:C.textMuted,fontSize:13}}>Écraser les semaines existantes non verrouillées à la destination</span>
+            </label>
+            {resultApply&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:resultApply.ok?C.accentDim:C.dangerDim,border:`1px solid ${resultApply.ok?C.accent:C.danger}44`}}><span style={{color:resultApply.ok?C.accent:C.danger,fontSize:13,fontWeight:600}}>{resultApply.msg}</span></div>}
+            <div style={{marginTop:10}}><Btn onClick={runApply} disabled={!template||!targetDate||busyApply}>{busyApply?"Application…":"⚡ Appliquer la trame témoin"}</Btn></div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ReplicatePanel({weeks,onReplicate}){
   const [open,setOpen]=useState(false);
   const sorted=[...weeks].sort((a,b)=>new Date(a.monday)-new Date(b.monday));
@@ -1860,6 +1959,7 @@ export default function App() {
   const [pharmaWeeks,setPharmaWeeks]=useState([]);
   const [paraWeeks,setParaWeeks]=useState([]);
   const [exchanges,setExchanges]=useState([]);
+  const [templates,setTemplates]=useState({pharmacie:null,parapharmacie:null});
   const [activeTab,setActiveTab]=useState("calendar");
   const [sector,setSector]=useState("pharmacie");
   const [selectedWeekId,setSelectedWeekId]=useState("");
@@ -1945,6 +2045,14 @@ export default function App() {
         const [pEx,prEx]=await Promise.all([db.getExchanges("pharmacie"),db.getExchanges("parapharmacie")]);
         setExchanges([...(pEx||[]),...(prEx||[])]);
 
+        // Load trame témoin (facultatif — nécessite la table 'templates' ; échec silencieux sinon)
+        try{
+          const [pTpl,prTpl]=await Promise.all([db.getTemplate("pharmacie"),db.getTemplate("parapharmacie")]);
+          setTemplates({pharmacie:pTpl||null,parapharmacie:prTpl||null});
+        }catch(e){
+          console.warn("Trame témoin indisponible (table 'templates' absente ? voir SETUP_SQL).",e);
+        }
+
         setSyncError(false);
       }catch(e){
         console.error("Load error:",e);
@@ -2012,6 +2120,51 @@ export default function App() {
       return Object.values(map).sort((a,b)=>new Date(a.monday)-new Date(b.monday));
     });
     return {ok:true,msg:`✓ ${newWeeks.length} semaine(s) créée(s)${skipped?`, ${skipped} ignorée(s) (existante ou verrouillée)`:""}.`};
+  }
+
+  // Capture 4 semaines consécutives (à partir de sourceStartId) comme trame témoin du secteur courant.
+  async function saveTrameTemoin(sourceStartId){
+    const sorted=[...weeks].sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+    const startIdx=sorted.findIndex(w=>w.id===sourceStartId);
+    if(startIdx<0) return {ok:false,msg:"Semaine source introuvable."};
+    const block=sorted.slice(startIdx,startIdx+4);
+    if(block.length<4) return {ok:false,msg:`Seulement ${block.length} semaine(s) disponible(s) à partir de cette date : il en faut 4.`};
+    const first=new Date(block[0].monday),last=new Date(block[3].monday);
+    const lastSunday=new Date(last);lastSunday.setDate(lastSunday.getDate()+6);
+    const label=`${formatDate(first,true)} → ${formatDate(lastSunday,true)} ${first.getFullYear()}`;
+    const weeksData=block.map(w=>JSON.parse(JSON.stringify(w.data)));
+    try{
+      await db.saveTemplate(sector,weeksData,label);
+    }catch(e){console.error(e);return {ok:false,msg:"Erreur d'enregistrement (la table 'templates' existe-t-elle ? voir SETUP_SQL)."};}
+    setTemplates(prev=>({...prev,[sector]:{sector,label,weeks:weeksData,updated_at:new Date().toISOString()}}));
+    return {ok:true,msg:`✓ Trame témoin enregistrée (source : ${label}).`};
+  }
+
+  // Applique la trame témoin enregistrée, en répétant le cycle de 4 semaines autant de fois que demandé.
+  async function applyTrameTemoin(targetDateStr,cycles,overwrite){
+    const tpl=templates[sector];
+    if(!tpl||!tpl.weeks||tpl.weeks.length<4) return {ok:false,msg:"Aucune trame témoin enregistrée pour ce secteur."};
+    const targetMonday=getMondayOf(new Date(targetDateStr+"T00:00:00"));
+    const newWeeks=[];let skipped=0;
+    for(let r=0;r<cycles;r++){
+      for(let i=0;i<4;i++){
+        const m=new Date(targetMonday);m.setDate(m.getDate()+(r*4+i)*7);m.setHours(12,0,0,0);
+        const id=toKey(m);
+        const exists=weeks.find(w=>w.id===id);
+        if(exists&&(!overwrite||exists.locked)){skipped++;continue;}
+        newWeeks.push({id,monday:m.toISOString(),sector,data:JSON.parse(JSON.stringify(tpl.weeks[i])),locked:false,lockedAt:null});
+      }
+    }
+    if(newWeeks.length===0) return {ok:false,msg:`Aucune semaine créée (${skipped} destination(s) déjà occupée(s) ou verrouillée(s)).`};
+    try{
+      await Promise.all(newWeeks.map(w=>db.upsertWeek(w)));
+    }catch(e){console.error(e);setSyncError(true);return {ok:false,msg:"Erreur d'enregistrement en base."};}
+    setWeeks(prev=>{
+      const map=Object.fromEntries(prev.map(w=>[w.id,w]));
+      newWeeks.forEach(w=>{map[w.id]=w;});
+      return Object.values(map).sort((a,b)=>new Date(a.monday)-new Date(b.monday));
+    });
+    return {ok:true,msg:`✓ ${newWeeks.length} semaine(s) créée(s) depuis la trame témoin${skipped?`, ${skipped} ignorée(s) (existante ou verrouillée)`:""}.`};
   }
 
   async function lockWeek(weekId){
@@ -2112,6 +2265,7 @@ export default function App() {
         {activeTab==="calendar"&&(
           <div>
             <div style={{marginBottom:14}}><h2 style={{color:C.text,margin:"0 0 3px",fontSize:18,fontWeight:700}}>Calendrier des plannings</h2><p style={{color:C.textMuted,fontSize:13,margin:0}}>Cliquez sur une semaine pour l'éditer. Validez pour verrouiller.</p></div>
+            <TrameTemoinPanel weeks={weeks} template={templates[sector]} onSave={saveTrameTemoin} onApply={applyTrameTemoin}/>
             <ReplicatePanel weeks={weeks} onReplicate={replicateWeeks}/>
             <CalendarView weeks={weeks} sector={sector} employees={employees} onSelectWeek={id=>{setSelectedWeekId(id);setActiveTab("trames");}} onLockWeek={lockWeek} onCreateWeek={createWeekFromDate}/>
           </div>
