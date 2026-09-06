@@ -371,7 +371,7 @@ function SyncBadge({syncing,error}){
 }
 
 // ─── TRAME GRID ───────────────────────────────────────────────────────────────
-function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}){
+function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,onCycleDayStatus,locked,sector}){
   const [selectedDay,setSelectedDay]=useState("Lundi");
   const [filter,setFilter]=useState("all");
   const mondayDate=new Date(monday);
@@ -438,12 +438,18 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
                 {filtered.filter(e=>e.role===role).map(emp=>{
                   const dd=weekData[selectedDay]?.[emp.id]||{};
                   const h=calcHours(dd);
+                  const dayStatus=dd._status; // "repos" | "conges" | undefined — jour entier, distinct des créneaux
+                  const rowTint=dayStatus==="repos"?`${C.pharma}16`:dayStatus==="conges"?`${C.accent}16`:"transparent";
                   return(
-                    <div key={emp.id} style={{display:"flex",alignItems:"center",marginBottom:3}}>
-                      <div style={{width:120,flexShrink:0,display:"flex",alignItems:"center",gap:5,paddingRight:6}}>
+                    <div key={emp.id} style={{display:"flex",alignItems:"center",marginBottom:3,borderRadius:6,background:rowTint,transition:"background 0.1s"}}>
+                      <div onClick={()=>!locked&&onCycleDayStatus(weekId,selectedDay,emp.id)}
+                        title={locked?`${emp.firstName} ${emp.lastName}`:dayStatus?`${emp.firstName} · ${dayStatus==="repos"?"Repos":"Congé"} — cliquer pour changer`:`${emp.firstName} · cliquer pour marquer repos/congé ce jour`}
+                        style={{width:120,flexShrink:0,display:"flex",alignItems:"center",gap:5,paddingRight:6,cursor:locked?"default":"pointer"}}>
                         <div style={{width:5,height:5,borderRadius:"50%",flexShrink:0,background:emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}}/>
-                        <span style={{color:C.text,fontSize:11,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:88}} title={`${emp.firstName} ${emp.lastName}`}>{emp.firstName}</span>
-                        <span style={{color:C.textDim,fontSize:10,flexShrink:0}}>{h}h</span>
+                        <span style={{color:C.text,fontSize:11,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dayStatus?58:88}} title={`${emp.firstName} ${emp.lastName}`}>{emp.firstName}</span>
+                        {dayStatus==="repos"&&<span style={{fontSize:8,fontWeight:800,color:C.pharma,background:`${C.pharma}22`,padding:"1px 4px",borderRadius:4,flexShrink:0}}>REPOS</span>}
+                        {dayStatus==="conges"&&<span style={{fontSize:8,fontWeight:800,color:C.accent,background:`${C.accent}22`,padding:"1px 4px",borderRadius:4,flexShrink:0}}>CONGÉ</span>}
+                        {!dayStatus&&<span style={{color:C.textDim,fontSize:10,flexShrink:0}}>{h}h</span>}
                       </div>
                       {SLOTS.map(slot=>{
                         const status=dd[slot]||"off";const active=status==="work"||status==="pause";
@@ -459,10 +465,12 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,locked,sector}
         </div>
       )}
       <div style={{display:"flex",gap:14,marginTop:12,flexWrap:"wrap",alignItems:"center"}}>
-        {[["work","Travaillé",C.accent],["pause","Pause",C.pause],["repos","Repos",C.textDim]].map(([s,l,color])=>(
+        {[["work","Travaillé",C.accent],["pause","Pause",C.pause]].map(([s,l,color])=>(
           <div key={s} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:getStatusBg(s),border:`1px solid ${color}66`}}/><span style={{color:C.textMuted,fontSize:11}}>{l}</span></div>
         ))}
-        {!locked&&<span style={{color:C.textDim,fontSize:11,marginLeft:"auto"}}>Clic : absent → travaillé → pause → absent</span>}
+        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:`${C.pharma}22`,border:`1px solid ${C.pharma}66`}}/><span style={{color:C.textMuted,fontSize:11}}>Repos (jour)</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:`${C.accent}22`,border:`1px solid ${C.accent}66`}}/><span style={{color:C.textMuted,fontSize:11}}>Congé (jour)</span></div>
+        {!locked&&<span style={{color:C.textDim,fontSize:11,marginLeft:"auto"}}>Case : absent → travaillé → pause · Prénom : repos → congé → normal</span>}
       </div>
     </div>
   );
@@ -1044,7 +1052,10 @@ function RecapTable({weeks,employees,sector}){
           return cs&&cs!=="off"&&w.data[day]?.[emp.id]?.[cs]==="work";
         }).length;
       },0);
-      return {...emp,workedH:totalWorked,contract:totalContract,diff,openings,closings,baseContract:emp.contract};
+      const conges=weeks.reduce((acc,w)=>{
+        return acc+DAYS.filter(day=>day!=="Dimanche"&&w.data[day]?.[emp.id]?._status==="conges").length;
+      },0);
+      return {...emp,workedH:totalWorked,contract:totalContract,diff,openings,closings,conges,baseContract:emp.contract};
     });
   },[weeks,employees]);
 
@@ -1054,7 +1065,7 @@ function RecapTable({weeks,employees,sector}){
 
   // For each employee, compute stats across all days of the week
   const stats=employees.map(emp=>{
-    let workedH=0, openings=0, closings=0;
+    let workedH=0, openings=0, closings=0, conges=0;
 
     DAYS.forEach((day,di)=>{
       if(day==="Dimanche") return;
@@ -1066,12 +1077,14 @@ function RecapTable({weeks,employees,sector}){
       // Closing: present at last slot of the day
       const closeSlot=CLOSING_SLOT[day];
       if(closeSlot&&closeSlot!=="off"&&dd[closeSlot]==="work") closings++;
+      // Congé : jour marqué via le clic sur le prénom dans la grille
+      if(dd._status==="conges") conges++;
     });
 
     const contract=emp.contract||0;
     const diff=Math.round((workedH-contract)*100)/100;
 
-    return { ...emp, workedH, contract, diff, openings, closings };
+    return { ...emp, workedH, contract, diff, openings, closings, conges };
   });
 
   // Totals row — computed dynamically based on view in render
@@ -1145,6 +1158,7 @@ function RecapTable({weeks,employees,sector}){
                 {label:"Écart",        w:70,  align:"center"},
                 {label:"Ouvertures",   w:90,  align:"center"},
                 {label:"Fermetures",   w:90,  align:"center"},
+                {label:"Congés",       w:80,  align:"center"},
               ].map(col=>(
                 <th key={col.label} style={{
                   padding:"10px 12px",textAlign:col.align,color:C.textMuted,
@@ -1163,7 +1177,7 @@ function RecapTable({weeks,employees,sector}){
                 <>
                   {/* Group header */}
                   <tr key={`header-${role}`}>
-                    <td colSpan={7} style={{padding:"8px 12px 4px",color:roleColor(role),fontSize:10,fontWeight:800,letterSpacing:"0.12em",textTransform:"uppercase",borderTop:`1px solid ${C.border}`}}>
+                    <td colSpan={8} style={{padding:"8px 12px 4px",color:roleColor(role),fontSize:10,fontWeight:800,letterSpacing:"0.12em",textTransform:"uppercase",borderTop:`1px solid ${C.border}`}}>
                       {role==="titulaire"?"◆ Titulaires (WP)":role==="pharmacien"?"◆ Pharmaciens":"◆ Préparateurs / Caissières"}
                     </td>
                   </tr>
@@ -1232,6 +1246,12 @@ function RecapTable({weeks,employees,sector}){
                           )}
                         </div>
                       </td>
+                      {/* Congés */}
+                      <td style={{padding:"10px 12px",textAlign:"center"}}>
+                        {s.conges>0
+                          ?<Badge color={C.accent}>{s.conges}j</Badge>
+                          :<span style={{color:C.textDim,fontSize:13}}>—</span>}
+                      </td>
                     </tr>
                   ))}
                 </>
@@ -1256,6 +1276,10 @@ function RecapTable({weeks,employees,sector}){
                 <span style={{color:C.pharma,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.closings,0)}</span>
                 <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>fer.</span>
               </td>
+              <td style={{padding:"12px",textAlign:"center"}}>
+                <span style={{color:C.accent,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.conges,0)}</span>
+                <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>j.</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1267,6 +1291,7 @@ function RecapTable({weeks,employees,sector}){
         <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 18h30 sam)</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.warning,fontWeight:700,fontSize:12}}>+xh</span><span style={{color:C.textMuted,fontSize:12}}>= heures supp</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.danger,fontWeight:700,fontSize:12}}>-xh</span><span style={{color:C.textMuted,fontSize:12}}>= déficit</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Congés = jours marqués congé dans la grille</span></div>
       </div>
     </div>
   );
@@ -2082,6 +2107,26 @@ export default function App() {
     if(!next.data[day][empId]) next.data[day][empId]=Object.fromEntries(SLOTS.map(s=>[s,"off"]));
     const cur=next.data[day][empId][slot]||"off";
     next.data[day][empId][slot]=cur==="off"?"work":cur==="work"?"pause":"off";
+    if(next.data[day][empId]._status) delete next.data[day][empId]._status; // reprise manuelle : annule repos/congé
+    setWeeks(prev=>prev.map(wk=>wk.id===weekId?next:wk));
+    await saveWeek(next);
+  }
+
+  // Cycle le statut jour entier d'un salarié : normal → repos → congé → normal.
+  // Repos/congé décochent automatiquement toutes les heures de la journée ; une reprise
+  // manuelle d'un créneau (toggleSlot) annule le statut.
+  async function cycleDayStatus(weekId,day,empId){
+    const w=weeks.find(wk=>wk.id===weekId);if(!w||w.locked)return;
+    const next=JSON.parse(JSON.stringify(w));
+    if(!next.data[day]) next.data[day]={};
+    const cur=next.data[day][empId]?._status;
+    const nextStatus=cur==="repos"?"conges":cur==="conges"?undefined:"repos";
+    if(nextStatus){
+      next.data[day][empId]=Object.fromEntries(SLOTS.map(s=>[s,"off"]));
+      next.data[day][empId]._status=nextStatus;
+    }else{
+      next.data[day][empId]=Object.fromEntries(SLOTS.map(s=>[s,next.data[day][empId]?.[s]||"off"]));
+    }
     setWeeks(prev=>prev.map(wk=>wk.id===weekId?next:wk));
     await saveWeek(next);
   }
@@ -2288,7 +2333,7 @@ export default function App() {
               </div>
             </div>
             <Card>
-              <TrameGrid weekData={selectedWeek.data} weekId={selectedWeek.id} monday={selectedWeek.monday} employees={employees} onToggleSlot={toggleSlot} locked={selectedWeek.locked} sector={sector}/>
+              <TrameGrid weekData={selectedWeek.data} weekId={selectedWeek.id} monday={selectedWeek.monday} employees={employees} onToggleSlot={toggleSlot} onCycleDayStatus={cycleDayStatus} locked={selectedWeek.locked} sector={sector}/>
             </Card>
             <div style={{marginTop:12,display:"flex",justifyContent:"flex-end"}}>
               {!selectedWeek.locked
