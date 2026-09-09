@@ -163,21 +163,22 @@ create table if not exists templates (
 `.trim();
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
-// Thème clair « Doux » : fond ivoire chaud, teintes assombries pour rester lisibles
-// sur fond blanc. onAccent = couleur du texte posé SUR un aplat accent/purple.
+// Thème clair « Pharmacie » : fond gris-bleu très clair, texte sombre.
+// Teintes calibrées pour rester lisibles (WCAG AA) en petit texte sur fond clair.
+// onAccent = couleur du texte posé SUR un aplat accent/purple.
 const C = {
-  bg:"#FAF7F1",surface:"#FFFFFF",surfaceHover:"#F3EEE4",border:"#E7DFCF",
-  accent:"#0A805F",accentDim:"#0A805F20",text:"#2B2620",textMuted:"#71675A",textDim:"#8E8271",
+  bg:"#F4F7F8",surface:"#FFFFFF",surfaceHover:"#EAF0F3",border:"#DCE4E8",
+  accent:"#00815F",accentDim:"#00815F20",text:"#16232B",textMuted:"#5B6E77",textDim:"#728690",
   onAccent:"#FFFFFF",
-  pharma:"#3B6FD1",pharmaDim:"#3B6FD11E",
-  pause:"#9A630B",pauseDim:"#9A630B1E",
-  danger:"#C0392B",dangerDim:"#C0392B18",
-  warning:"#9A630B",warningDim:"#9A630B1E",
-  purple:"#7C4DBA",purpleDim:"#7C4DBA1E",
-  locked:"#847860",lockedDim:"#84786018",
-  titulaire:"#A5560A",titulaireDim:"#A5560A1E",
+  pharma:"#1A5FC4",pharmaDim:"#1A5FC41E",
+  pause:"#9C5E08",pauseDim:"#9C5E081E",
+  danger:"#C42E24",dangerDim:"#C42E2418",
+  warning:"#9C5E08",warningDim:"#9C5E081E",
+  purple:"#6D3FB0",purpleDim:"#6D3FB01E",
+  locked:"#7C8E97",lockedDim:"#7C8E9718",
+  titulaire:"#A83609",titulaireDim:"#A836091E",
   conge:"#B03B7C",congeDim:"#B03B7C1E",   // congés : framboise, distinct du vert « travaillé »
-  weekend:"#F1EDE3",                       // fond des colonnes samedi/dimanche du calendrier
+  weekend:"#EDF2F4",                       // fond des colonnes samedi/dimanche du calendrier
 };
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
