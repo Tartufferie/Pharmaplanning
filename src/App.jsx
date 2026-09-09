@@ -163,16 +163,21 @@ create table if not exists templates (
 `.trim();
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+// Thème clair « Doux » : fond ivoire chaud, teintes assombries pour rester lisibles
+// sur fond blanc. onAccent = couleur du texte posé SUR un aplat accent/purple.
 const C = {
-  bg:"#0F1923",surface:"#162232",surfaceHover:"#1C2D42",border:"#1E3048",
-  accent:"#00C896",accentDim:"#00C89622",text:"#E8EDF2",textMuted:"#6B8299",textDim:"#3A5570",
-  pharma:"#4A9EFF",pharmaDim:"#4A9EFF22",
-  pause:"#F59E0B",pauseDim:"#F59E0B22",
-  danger:"#FF5C5C",dangerDim:"#FF5C5C22",
-  warning:"#F59E0B",warningDim:"#F59E0B22",
-  purple:"#A855F7",purpleDim:"#A855F722",
-  locked:"#3A5570",lockedDim:"#3A557022",
-  titulaire:"#F97316",titulaireDim:"#F9731622",
+  bg:"#FAF7F1",surface:"#FFFFFF",surfaceHover:"#F3EEE4",border:"#E7DFCF",
+  accent:"#0A805F",accentDim:"#0A805F20",text:"#2B2620",textMuted:"#71675A",textDim:"#8E8271",
+  onAccent:"#FFFFFF",
+  pharma:"#3B6FD1",pharmaDim:"#3B6FD11E",
+  pause:"#9A630B",pauseDim:"#9A630B1E",
+  danger:"#C0392B",dangerDim:"#C0392B18",
+  warning:"#9A630B",warningDim:"#9A630B1E",
+  purple:"#7C4DBA",purpleDim:"#7C4DBA1E",
+  locked:"#847860",lockedDim:"#84786018",
+  titulaire:"#A5560A",titulaireDim:"#A5560A1E",
+  conge:"#B03B7C",congeDim:"#B03B7C1E",   // congés : framboise, distinct du vert « travaillé »
+  weekend:"#F1EDE3",                       // fond des colonnes samedi/dimanche du calendrier
 };
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -266,7 +271,7 @@ function slotDuration(slot){return slot==="7h45"?0.25:0.5;}
 function slotEnd(slot){const i=SLOTS.indexOf(slot);return i>=0&&i<SLOTS.length-1?SLOTS[i+1]:"20h";}
 function calcHours(dd){return Object.entries(dd||{}).reduce((a,[slot,st])=>a+(st==="work"?slotDuration(slot):0),0);}
 function calcWeekHours(weekData,empId){return DAYS.reduce((a,d)=>a+calcHours(weekData[d]?.[empId]||{}),0);}
-function getStatusBg(s){return s==="work"?"#00C89622":s==="pause"?"#F59E0B22":s==="repos"?"#1a203044":"transparent";}
+function getStatusBg(s){return s==="work"?C.accentDim:s==="pause"?C.pauseDim:s==="repos"?C.surfaceHover:"transparent";}
 function getStatusBorder(s){return s==="work"?C.accent:s==="pause"?C.pause:s==="repos"?C.textDim:C.border;}
 
 function getSlotsInRange(tf,tt){const f=slotToMin(tf),t=slotToMin(tt);return SLOTS.filter(s=>{const v=slotToMin(s);return v>=f&&v<t;});}
@@ -307,7 +312,7 @@ function Card({children,style}){return <div style={{background:C.surface,border:
 function Btn({children,onClick,variant="primary",size="md",disabled,style={}}){
   const base={display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:8,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:600,transition:"all 0.15s",opacity:disabled?0.4:1};
   const v={
-    primary:{background:C.accent,color:"#0F1923",padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14},
+    primary:{background:C.accent,color:C.onAccent,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14},
     ghost:{background:"transparent",color:C.textMuted,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.border}`},
     danger:{background:C.dangerDim,color:C.danger,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.danger}44`},
     success:{background:C.accentDim,color:C.accent,padding:size==="sm"?"5px 11px":"9px 17px",fontSize:size==="sm"?12:14,border:`1px solid ${C.accent}44`},
@@ -330,7 +335,7 @@ function SetupScreen({onDone}){
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:640,width:"100%",display:"flex",flexDirection:"column",gap:20}}>
         <div style={{textAlign:"center"}}>
-          <div style={{width:56,height:56,borderRadius:14,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:"#0F1923",fontWeight:900,margin:"0 auto 16px"}}>⊕</div>
+          <div style={{width:56,height:56,borderRadius:14,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:C.onAccent,fontWeight:900,margin:"0 auto 16px"}}>⊕</div>
           <h1 style={{color:C.text,fontWeight:800,fontSize:22,margin:"0 0 6px"}}>Configuration Supabase</h1>
           <p style={{color:C.textMuted,fontSize:14,margin:0}}>Une seule étape : créer les tables dans votre base de données.</p>
         </div>
@@ -439,7 +444,7 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,onCycleDayStat
                   const dd=weekData[selectedDay]?.[emp.id]||{};
                   const h=calcHours(dd);
                   const dayStatus=dd._status; // "repos" | "conges" | undefined — jour entier, distinct des créneaux
-                  const rowTint=dayStatus==="repos"?`${C.pharma}16`:dayStatus==="conges"?`${C.accent}16`:"transparent";
+                  const rowTint=dayStatus==="repos"?`${C.pharma}16`:dayStatus==="conges"?`${C.conge}16`:"transparent";
                   return(
                     <div key={emp.id} style={{display:"flex",alignItems:"center",marginBottom:3,borderRadius:6,background:rowTint,transition:"background 0.1s"}}>
                       <div onClick={()=>!locked&&onCycleDayStatus(weekId,selectedDay,emp.id)}
@@ -448,13 +453,13 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,onCycleDayStat
                         <div style={{width:5,height:5,borderRadius:"50%",flexShrink:0,background:emp.role==="titulaire"?C.titulaire:emp.role==="pharmacien"?C.pharma:C.accent}}/>
                         <span style={{color:C.text,fontSize:11,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dayStatus?58:88}} title={`${emp.firstName} ${emp.lastName}`}>{emp.firstName}</span>
                         {dayStatus==="repos"&&<span style={{fontSize:8,fontWeight:800,color:C.pharma,background:`${C.pharma}22`,padding:"1px 4px",borderRadius:4,flexShrink:0}}>REPOS</span>}
-                        {dayStatus==="conges"&&<span style={{fontSize:8,fontWeight:800,color:C.accent,background:`${C.accent}22`,padding:"1px 4px",borderRadius:4,flexShrink:0}}>CONGÉ</span>}
+                        {dayStatus==="conges"&&<span style={{fontSize:8,fontWeight:800,color:C.conge,background:`${C.conge}22`,padding:"1px 4px",borderRadius:4,flexShrink:0}}>CONGÉ</span>}
                         {!dayStatus&&<span style={{color:C.textDim,fontSize:10,flexShrink:0}}>{h}h</span>}
                       </div>
                       {SLOTS.map(slot=>{
                         const status=dd[slot]||"off";const active=status==="work"||status==="pause";
                         const isOpen=slot===OPENING_SLOT,isClose=slot===closeSlot;
-                        return <div key={slot} onClick={()=>!locked&&onToggleSlot(weekId,selectedDay,emp.id,slot)} title={`${emp.firstName}·${slot}·${status}`} style={{flex:1,height:26,margin:"0 1px",borderRadius:3,cursor:locked?"not-allowed":"pointer",background:getStatusBg(status),border:`1px solid ${active?getStatusBorder(status):locked?"#1E304833":getStatusBorder(status)+"44"}`,outline:active&&(isOpen||isClose)?`2px solid ${isOpen?C.accent:C.danger}`:"none",boxSizing:"border-box",transition:"all 0.08s",opacity:locked?0.8:1}}/>;
+                        return <div key={slot} onClick={()=>!locked&&onToggleSlot(weekId,selectedDay,emp.id,slot)} title={`${emp.firstName}·${slot}·${status}`} style={{flex:1,height:26,margin:"0 1px",borderRadius:3,cursor:locked?"not-allowed":"pointer",background:getStatusBg(status),border:`1px solid ${active?getStatusBorder(status):locked?`${C.border}88`:getStatusBorder(status)+"44"}`,outline:active&&(isOpen||isClose)?`2px solid ${isOpen?C.accent:C.danger}`:"none",boxSizing:"border-box",transition:"all 0.08s",opacity:locked?0.8:1}}/>;
                       })}
                     </div>
                   );
@@ -469,7 +474,7 @@ function TrameGrid({weekData,weekId,monday,employees,onToggleSlot,onCycleDayStat
           <div key={s} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:getStatusBg(s),border:`1px solid ${color}66`}}/><span style={{color:C.textMuted,fontSize:11}}>{l}</span></div>
         ))}
         <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:`${C.pharma}22`,border:`1px solid ${C.pharma}66`}}/><span style={{color:C.textMuted,fontSize:11}}>Repos (jour)</span></div>
-        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:`${C.accent}22`,border:`1px solid ${C.accent}66`}}/><span style={{color:C.textMuted,fontSize:11}}>Congé (jour)</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:13,height:13,borderRadius:3,background:`${C.conge}22`,border:`1px solid ${C.conge}66`}}/><span style={{color:C.textMuted,fontSize:11}}>Congé (jour)</span></div>
         {!locked&&<span style={{color:C.textDim,fontSize:11,marginLeft:"auto"}}>Case : absent → travaillé → pause · Prénom : repos → congé → normal</span>}
       </div>
     </div>
@@ -567,7 +572,7 @@ function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek,onCreateWe
                 return(
                   <div key={di} style={{
                     padding:"8px 6px",borderRadius:7,minHeight:56,
-                    background:isToday?C.accentDim:isWeekend&&isThisMonth?"#0a1520":"transparent",
+                    background:isToday?C.accentDim:isWeekend&&isThisMonth?C.weekend:"transparent",
                     position:"relative",
                   }}>
                     <div style={{
@@ -576,7 +581,7 @@ function CalendarView({weeks,sector,employees,onSelectWeek,onLockWeek,onCreateWe
                     }}>
                       <span style={{
                         fontSize:13,fontWeight:isToday?800:500,
-                        color:isToday?"#0F1923":isThisMonth?C.text:C.textDim,
+                        color:isToday?C.onAccent:isThisMonth?C.text:C.textDim,
                       }}>{day.getDate()}</span>
                     </div>
                     {/* Show staff count for this day if week exists */}
@@ -689,7 +694,7 @@ function LoginScreen({ onLogin }) {
       <div style={{ width:"100%", maxWidth:400, display:"flex", flexDirection:"column", gap:20 }}>
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:8 }}>
-          <div style={{ width:56, height:56, borderRadius:14, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:"#0F1923", fontWeight:900, margin:"0 auto 16px" }}>⊕</div>
+          <div style={{ width:56, height:56, borderRadius:14, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:C.onAccent, fontWeight:900, margin:"0 auto 16px" }}>⊕</div>
           <h1 style={{ color:C.text, fontWeight:800, fontSize:24, margin:"0 0 6px" }}>Pharma<span style={{ color:C.accent }}>Planning</span></h1>
           <p style={{ color:C.textMuted, fontSize:14, margin:0 }}>Connectez-vous à votre espace</p>
         </div>
@@ -721,7 +726,7 @@ function LoginScreen({ onLogin }) {
           )}
           <button
             onClick={handleLogin} disabled={!email||!password||loading}
-            style={{ padding:"12px", borderRadius:8, border:"none", background:C.accent, color:"#0F1923", fontFamily:"inherit", fontWeight:700, fontSize:15, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, marginTop:4 }}>
+            style={{ padding:"12px", borderRadius:8, border:"none", background:C.accent, color:C.onAccent, fontFamily:"inherit", fontWeight:700, fontSize:15, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, marginTop:4 }}>
             {loading ? "Connexion…" : "Se connecter"}
           </button>
         </div>
@@ -806,7 +811,7 @@ function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSign
       {/* Top bar */}
       <div style={{ position:"sticky", top:0, zIndex:100, background:`${C.surface}EE`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"0 20px", display:"flex", alignItems:"center", gap:16, height:56 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:28, borderRadius:7, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#0F1923", fontWeight:900 }}>⊕</div>
+          <div style={{ width:28, height:28, borderRadius:7, background:`linear-gradient(135deg,${C.accent},${C.pharma})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:C.onAccent, fontWeight:900 }}>⊕</div>
           <span style={{ fontSize:14, fontWeight:800, color:C.text, letterSpacing:"-0.02em" }}>Pharma<span style={{ color:C.accent }}>Planning</span></span>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
@@ -1001,7 +1006,7 @@ function EmployeeView({ employee, weeks, allEmployees, onExchangeRequest, onSign
                             background:sel?C.accentDim:c.available?C.surfaceHover:`${C.danger}07`,
                             opacity:c.available?1:0.6,
                           }}>
-                            <div style={{ width:28, height:28, borderRadius:"50%", background:c.available?(sel?C.accent:C.accentDim):C.dangerDim, border:`2px solid ${c.available?(sel?C.accent:C.border):C.danger}`, display:"flex", alignItems:"center", justifyContent:"center", color:c.available?(sel?"#0F1923":C.accent):C.danger, fontWeight:700, fontSize:12 }}>{c.firstName[0]}</div>
+                            <div style={{ width:28, height:28, borderRadius:"50%", background:c.available?(sel?C.accent:C.accentDim):C.dangerDim, border:`2px solid ${c.available?(sel?C.accent:C.border):C.danger}`, display:"flex", alignItems:"center", justifyContent:"center", color:c.available?(sel?C.onAccent:C.accent):C.danger, fontWeight:700, fontSize:12 }}>{c.firstName[0]}</div>
                             <div style={{ flex:1 }}>
                               <div style={{ fontWeight:600, fontSize:13, color:c.available?C.text:C.textMuted }}>{c.firstName} {c.lastName}</div>
                               <div style={{ fontSize:11, color:C.textDim }}>{c.role==="pharmacien"?"Pharmacien":"Préparateur"}</div>
@@ -1132,7 +1137,7 @@ function RecapTable({weeks,employees,sector}){
       <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{display:"flex",gap:2,background:C.bg,borderRadius:8,padding:3,border:`1px solid ${C.border}`}}>
           {[["week","Par semaine"],["month","Vue mensuelle"]].map(([v,l])=>(
-            <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:view===v?C.accent:"transparent",color:view===v?"#0F1923":C.textMuted,transition:"all 0.15s"}}>{l}</button>
+            <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:view===v?C.accent:"transparent",color:view===v?C.onAccent:C.textMuted,transition:"all 0.15s"}}>{l}</button>
           ))}
         </div>
         {view==="week"&&<>
@@ -1274,7 +1279,7 @@ function RecapTable({weeks,employees,sector}){
                       {/* Congés */}
                       <td style={{padding:"10px 12px",textAlign:"center"}}>
                         {s.conges>0
-                          ?<Badge color={C.accent}>{s.conges}j</Badge>
+                          ?<Badge color={C.conge}>{s.conges}j</Badge>
                           :<span style={{color:C.textDim,fontSize:13}}>—</span>}
                       </td>
                     </tr>
@@ -1302,7 +1307,7 @@ function RecapTable({weeks,employees,sector}){
                 <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>fer.</span>
               </td>
               <td style={{padding:"12px",textAlign:"center"}}>
-                <span style={{color:C.accent,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.conges,0)}</span>
+                <span style={{color:C.conge,fontWeight:800,fontSize:15}}>{(view==="month"?monthlyStats:stats).reduce((a,s)=>a+s.conges,0)}</span>
                 <span style={{color:C.textDim,fontSize:11,marginLeft:4}}>j.</span>
               </td>
             </tr>
@@ -1316,7 +1321,7 @@ function RecapTable({weeks,employees,sector}){
         <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.pharma}}/><span style={{color:C.textMuted,fontSize:12}}>Fermeture = présent au dernier créneau (19h30 lun–ven, 18h30 sam)</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.warning,fontWeight:700,fontSize:12}}>+xh</span><span style={{color:C.textMuted,fontSize:12}}>= heures supp</span></div>
         <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:C.danger,fontWeight:700,fontSize:12}}>-xh</span><span style={{color:C.textMuted,fontSize:12}}>= déficit</span></div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.accent}}/><span style={{color:C.textMuted,fontSize:12}}>Congés = jours marqués congé dans la grille</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:"50%",background:C.conge}}/><span style={{color:C.textMuted,fontSize:12}}>Congés = jours marqués congé dans la grille</span></div>
       </div>
     </div>
   );
@@ -1484,7 +1489,7 @@ function Exchanges({exchanges,setExchanges,weeks,setWeeks,employees}){
               <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:240,overflowY:"auto"}}>
                 {candidates.map(c=>{const sel=form.to===c.id;return(
                   <div key={c.id} onClick={()=>c.available&&setForm(f=>({...f,to:c.id}))} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:7,cursor:c.available?"pointer":"not-allowed",border:`1px solid ${sel?C.accent:c.available?C.border:C.danger+"33"}`,background:sel?C.accentDim:c.available?C.surfaceHover:`${C.danger}07`,opacity:c.available?1:0.6,transition:"all 0.1s"}}>
-                    <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,background:c.available?(sel?C.accent:C.accentDim):C.dangerDim,border:`2px solid ${c.available?(sel?C.accent:C.border):C.danger}`,display:"flex",alignItems:"center",justifyContent:"center",color:c.available?(sel?"#0F1923":C.accent):C.danger,fontWeight:700,fontSize:12}}>{c.firstName[0]}</div>
+                    <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,background:c.available?(sel?C.accent:C.accentDim):C.dangerDim,border:`2px solid ${c.available?(sel?C.accent:C.border):C.danger}`,display:"flex",alignItems:"center",justifyContent:"center",color:c.available?(sel?C.onAccent:C.accent):C.danger,fontWeight:700,fontSize:12}}>{c.firstName[0]}</div>
                     <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:c.available?C.text:C.textMuted}}>{c.firstName} {c.lastName}</div><div style={{fontSize:11,color:C.textDim}}>{c.role==="pharmacien"?"Pharmacien":"Préparateur"}</div></div>
                     {c.available?<Badge color={C.accent}>Disponible</Badge>:<div style={{textAlign:"right"}}><Badge color={C.danger}>En poste</Badge><div style={{fontSize:10,color:C.danger,marginTop:2}}>{c.conflicts.slice(0,3).join(", ")}{c.conflicts.length>3?` +${c.conflicts.length-3}`:""}</div></div>}
                     {sel&&<span style={{color:C.accent,fontSize:16}}>✓</span>}
@@ -1766,7 +1771,7 @@ function SendCenter({ employees, weeks }) {
                   border:`1px solid ${sel?C.accent:C.border}`,background:sel?C.accentDim:"transparent",transition:"all 0.1s"
                 }}>
                   <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${sel?C.accent:C.textDim}`,background:sel?C.accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    {sel&&<span style={{color:"#0F1923",fontSize:11,fontWeight:800}}>✓</span>}
+                    {sel&&<span style={{color:C.onAccent,fontSize:11,fontWeight:800}}>✓</span>}
                   </div>
                   <div style={{flex:1}}>
                     <div style={{color:sel?C.text:C.textMuted,fontSize:13,fontWeight:500}}>
@@ -1809,7 +1814,7 @@ function SendCenter({ employees, weeks }) {
                         transition:"all 0.1s",marginBottom:3,
                       }}>
                         <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${sel?roleColor(emp.role):C.textDim}`,background:sel?roleColor(emp.role):"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                          {sel&&<span style={{color:"#0F1923",fontSize:11,fontWeight:800}}>✓</span>}
+                          {sel&&<span style={{color:C.onAccent,fontSize:11,fontWeight:800}}>✓</span>}
                         </div>
                         <div style={{width:28,height:28,borderRadius:"50%",background:`${roleColor(emp.role)}22`,border:`2px solid ${roleColor(emp.role)}`,display:"flex",alignItems:"center",justifyContent:"center",color:roleColor(emp.role),fontWeight:700,fontSize:12,flexShrink:0}}>
                           {emp.firstName[0]}
@@ -2272,7 +2277,7 @@ export default function App() {
 
   if(loading) return(
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
-      <div style={{width:48,height:48,borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#0F1923",fontWeight:900}}>⊕</div>
+      <div style={{width:48,height:48,borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:C.onAccent,fontWeight:900}}>⊕</div>
       <div style={{color:C.textMuted,fontSize:14}}>Chargement des données…</div>
       {syncError&&<div style={{color:C.warning,fontSize:12}}>Connexion Supabase lente — utilisation des données locales</div>}
     </div>
@@ -2302,12 +2307,12 @@ export default function App() {
       {/* Top bar */}
       <div style={{position:"sticky",top:0,zIndex:100,background:`${C.surface}EE`,backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:"0 18px",display:"flex",alignItems:"center",gap:14,height:54,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,userSelect:"none"}}>
-          <div style={{width:28,height:28,borderRadius:7,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#0F1923",fontWeight:900}}>⊕</div>
+          <div style={{width:28,height:28,borderRadius:7,background:`linear-gradient(135deg,${C.accent},${C.pharma})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:C.onAccent,fontWeight:900}}>⊕</div>
           <span style={{fontSize:14,fontWeight:800,color:C.text,letterSpacing:"-0.02em"}}>Pharma<span style={{color:C.accent}}>Planning</span></span>
         </div>
         <div style={{display:"flex",gap:2,background:C.bg,borderRadius:8,padding:3,border:`1px solid ${C.border}`}}>
           {[["pharmacie","💊 Pharmacie"],["parapharmacie","✨ Para"]].map(([s,l])=>(
-            <button key={s} onClick={()=>setSector(s)} style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:sector===s?(s==="pharmacie"?C.accent:C.purple):"transparent",color:sector===s?"#0F1923":C.textMuted,transition:"all 0.15s"}}>{l}</button>
+            <button key={s} onClick={()=>setSector(s)} style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:sector===s?(s==="pharmacie"?C.accent:C.purple):"transparent",color:sector===s?C.onAccent:C.textMuted,transition:"all 0.15s"}}>{l}</button>
           ))}
         </div>
         {selectedWeek&&<div style={{display:"flex",alignItems:"center",gap:8}}>
